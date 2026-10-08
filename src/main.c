@@ -5,11 +5,13 @@
 
 
 
-int battleSquareSize = 700;
 int playerSpiritSize = 40;
 bool spiritMode = true;
+int getBattleSquareSize() {
+	return GetScreenHeight() - 50;
+}
 int getBattleBorderSize() {
-	return (int)round(battleSquareSize / 50);
+	return (int)round(getBattleSquareSize() / 50);
 }
 
 
@@ -92,10 +94,10 @@ void MoveSpirit(Spirit* plrSpirit) {
 	Vector2 center    = GetCenterOfScreen();
 	float speed       = plrSpirit->movespeed;
 
-	float leftLimit   = center.x - (battleSquareSize / 2) + (playerSpiritSize / 2) + getBattleBorderSize();
-	float topLimit    = center.y - (battleSquareSize / 2) + (playerSpiritSize / 2) + getBattleBorderSize();
-	float rightLimit  = center.x - (playerSpiritSize / 2) + (battleSquareSize / 2) - getBattleBorderSize();
-	float bottomLimit = center.y - (playerSpiritSize / 2) + (battleSquareSize / 2) - getBattleBorderSize();
+	float leftLimit   = center.x - (getBattleSquareSize() / 2) + (playerSpiritSize / 2) + getBattleBorderSize();
+	float topLimit    = center.y - (getBattleSquareSize() / 2) + (playerSpiritSize / 2) + getBattleBorderSize();
+	float rightLimit  = center.x - (playerSpiritSize / 2) + (getBattleSquareSize() / 2) - getBattleBorderSize();
+	float bottomLimit = center.y - (playerSpiritSize / 2) + (getBattleSquareSize() / 2) - getBattleBorderSize();
 
 	MoveVectorWithKeys(&plrSpirit->position, speed, leftLimit, rightLimit, topLimit, bottomLimit);
 }
@@ -137,20 +139,21 @@ int main() {
 		BeginDrawing();
 		ClearBackground(PINK);
 
-		DrawText("[SPACE] to toggle spirit mode!", 20, 20, 30, WHITE);
 
 		if (spiritMode) {
-			DrawText("Spirit Mode: TRUE", 20, 50, 30, LIGHTGRAY);
 			MoveSpirit(&plrSpirit);
 
-			DrawBattleBackground(700);
+			DrawBattleBackground(getBattleSquareSize());
 			DrawRectangle(plrSpirit.position.x - (playerSpiritSize / 2), plrSpirit.position.y - (playerSpiritSize / 2), playerSpiritSize, playerSpiritSize, RED);
+			DrawText("Spirit Mode: TRUE", 20, 50, 30, LIGHTGRAY);
 		} else {
-			DrawText("Spirit Mode: FALSE", 20, 50, 30, LIGHTGRAY);
 			MovePlr(&plr);
 
 			DrawTextureEx(wabbit, plr.position, 0, 2, PINK);
+			DrawText("Spirit Mode: FALSE", 20, 50, 30, LIGHTGRAY);
 		}
+		
+		DrawText("[SPACE] to toggle spirit mode!", 20, 20, 30, WHITE);
 		
 		// end the frame and get ready for the next one  (display frame, poll input, etc...)
 		EndDrawing();
