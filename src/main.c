@@ -31,8 +31,7 @@ Vector2 GetCenterOfScreen() {
 	float x = GetScreenWidth() / 2;
 	float y = GetScreenHeight() / 2;
 	
-	Vector2 vec = {x, y};
-	return vec;
+	return (Vector2){x, y};
 }
 
 void DrawBattleBackground(int squareSize) {
@@ -49,67 +48,97 @@ void DrawBattleBackground(int squareSize) {
 
 
 
-void MoveVectorWithKeys(Vector2* vector, float speed, float leftLimit, float rightLimit, float topLimit, float bottomLimit) {
-	float sqrtSpeed = speed / sqrt(2);
-
-	bool hasVerticalMovement   = IsKeyDown(KEY_UP)   || IsKeyDown(KEY_W) || IsKeyDown(KEY_DOWN)  || IsKeyDown(KEY_S);
-	bool hasHorizontalMovement = IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A) || IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D);
-
-	// you guys better know what ternaries (bool ? value1 : value2) are
-	if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A)) {
-		if (vector->x > leftLimit) {
-			vector->x -= hasVerticalMovement ? sqrtSpeed : speed;
-		} else {
-			vector->x = leftLimit;
-		}
-	}
-
-	if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D)) {
-		if (vector->x < rightLimit) {
-			vector->x += hasVerticalMovement ? sqrtSpeed : speed;
-		} else {
-			vector->x = rightLimit;
-		}
-	}
-
-	if (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W)) {
-		if (vector->y > topLimit) {
-			vector->y -= hasHorizontalMovement ? sqrtSpeed : speed;
-		} else {
-			vector->y = topLimit;
-		}
-	}
-
-	if (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S)) {
-		if (vector->y < bottomLimit) {
-			vector->y += hasHorizontalMovement ? sqrtSpeed : speed;
-		} else {
-			vector->y = bottomLimit;
-		}
-	}
-}
-
 void MoveSpirit(Spirit* plrSpirit) {
 	Vector2 center    = GetCenterOfScreen();
 	float speed       = plrSpirit->movespeed;
+	float sqrtSpeed   = speed / sqrt(2);
 
 	float leftLimit   = center.x - (getBattleSquareSize() / 2) + (playerSpiritSize / 2) + getBattleBorderSize();
 	float topLimit    = center.y - (getBattleSquareSize() / 2) + (playerSpiritSize / 2) + getBattleBorderSize();
 	float rightLimit  = center.x - (playerSpiritSize / 2) + (getBattleSquareSize() / 2) - getBattleBorderSize();
 	float bottomLimit = center.y - (playerSpiritSize / 2) + (getBattleSquareSize() / 2) - getBattleBorderSize();
 
-	MoveVectorWithKeys(&plrSpirit->position, speed, leftLimit, rightLimit, topLimit, bottomLimit);
+
+	bool hasVerticalMovement   = IsKeyDown(KEY_UP)   || IsKeyDown(KEY_W) || IsKeyDown(KEY_DOWN)  || IsKeyDown(KEY_S);
+	bool hasHorizontalMovement = IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A) || IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D);
+
+	if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A)) {
+		if (plrSpirit->position.x > leftLimit) {
+			plrSpirit->position.x -= hasVerticalMovement ? sqrtSpeed : speed;
+		} else {
+			plrSpirit->position.x = leftLimit;
+		}
+	}
+
+	if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D)) {
+		if (plrSpirit->position.x < rightLimit) {
+			plrSpirit->position.x += hasVerticalMovement ? sqrtSpeed : speed;
+		} else {
+			plrSpirit->position.x = rightLimit;
+		}
+	}
+
+	if (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W)) {
+		if (plrSpirit->position.y > topLimit) {
+			plrSpirit->position.y -= hasHorizontalMovement ? sqrtSpeed : speed;
+		} else {
+			plrSpirit->position.y = topLimit;
+		}
+	}
+
+	if (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S)) {
+		if (plrSpirit->position.y < bottomLimit) {
+			plrSpirit->position.y += hasHorizontalMovement ? sqrtSpeed : speed;
+		} else {
+			plrSpirit->position.y = bottomLimit;
+		}
+	}
 }
 
-void MovePlr(Character* plr) {
+void MovePlr(Character* plr, Texture plrTexture) {
 	float speed       = plr->movespeed;
+	float sqrtSpeed   = speed / sqrt(2);
 
-	float leftLimit   = 10;
-	float topLimit    = 10;
-	float rightLimit  = GetScreenWidth() - 30;
-	float bottomLimit = GetScreenHeight() - 30;
+	float leftLimit   = 0;
+	float topLimit    = 0;
+	float rightLimit  = GetScreenWidth() - plrTexture.width * 2;
+	float bottomLimit = GetScreenHeight() - plrTexture.height * 2;
 
-	MoveVectorWithKeys(&plr->position, speed, leftLimit, rightLimit, topLimit, bottomLimit);
+	bool hasVerticalMovement   = IsKeyDown(KEY_UP)   || IsKeyDown(KEY_W) || IsKeyDown(KEY_DOWN)  || IsKeyDown(KEY_S);
+	bool hasHorizontalMovement = IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A) || IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D);
+
+
+	if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A)) {
+		if (plr->position.x > leftLimit) {
+			plr->position.x -= hasVerticalMovement ? sqrtSpeed : speed;
+		} else {
+			plr->position.x = leftLimit;
+		}
+	}
+
+	if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D)) {
+		if (plr->position.x < rightLimit) {
+			plr->position.x += hasVerticalMovement ? sqrtSpeed : speed;
+		} else {
+			plr->position.x = rightLimit;
+		}
+	}
+
+	if (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W)) {
+		if (plr->position.y > topLimit) {
+			plr->position.y -= hasHorizontalMovement ? sqrtSpeed : speed;
+		} else {
+			plr->position.y = topLimit;
+		}
+	}
+
+	if (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S)) {
+		if (plr->position.y < bottomLimit) {
+			plr->position.y += hasHorizontalMovement ? sqrtSpeed : speed;
+		} else {
+			plr->position.y = bottomLimit;
+		}
+	}
 }
 
 
@@ -154,7 +183,7 @@ int main() {
 	Character plr = {GetCenterOfScreen(), 13.7, 100, plrSpirit};
 	Texture wabbit = LoadTexture("wabbit_alpha.png");
 
-	bool spiritMode = true;
+	bool spiritMode = false;
 	int scenario = 0;
 
 
@@ -182,7 +211,7 @@ int main() {
 			DrawRectangle(plrSpirit.position.x - (playerSpiritSize / 2), plrSpirit.position.y - (playerSpiritSize / 2), playerSpiritSize, playerSpiritSize, RED);
 			DrawText("Spirit Mode: TRUE", 20, 50, 30, LIGHTGRAY);
 		} else {
-			MovePlr(&plr);
+			MovePlr(&plr, wabbit);
 
 			DrawTextureEx(wabbit, plr.position, 0, 2, PINK);
 			DrawText("Spirit Mode: FALSE", 20, 50, 30, LIGHTGRAY);
