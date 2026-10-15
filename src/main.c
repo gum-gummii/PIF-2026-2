@@ -16,8 +16,34 @@ typedef struct {
 	Spirit spirit;
 } Character;
 
+typedef struct {
+	char* name;
+	Image image;
+} LoadedImage;
 
-bool DEBUG_MODE = false;
+typedef struct {
+	char* name;
+	Texture texture;
+} LoadedTexture;
+
+typedef struct {
+	char* name;
+	Rectangle rect;
+} Hitbox;
+
+typedef struct {
+	LoadedImage* images;
+	int imageCount;
+	LoadedTexture* textures;
+	int textureCount;
+	Hitbox* hitboxes;
+	int hitboxCount;
+
+	Texture plrTexture;
+} LoadedAssets;
+
+
+bool DEBUG_MODE = true;
 int playerSpiritSize = 40;
 int getBattleSquareSize() {
 	return GetScreenHeight() - 50;
@@ -95,22 +121,42 @@ void MoveSpirit(Spirit* plrSpirit) {
 	}
 }
 
-void MovePlr(Character* plr, Texture plrTexture) {
+bool MovePlr(Character* plr, Rectangle plrTextureRect, Vector2* plrCurrentFrame) {
 	float speed       = plr->movespeed;
 	float sqrtSpeed   = speed / sqrt(2);
 
 	float leftLimit   = 0;
 	float topLimit    = 0;
-	float rightLimit  = GetScreenWidth() - plrTexture.width * 2;
-	float bottomLimit = GetScreenHeight() - plrTexture.height * 2;
+	float rightLimit  = GetScreenWidth() - plrTextureRect.width;
+	float bottomLimit = GetScreenHeight() - plrTextureRect.height;
 
 	bool hasVerticalMovement   = IsKeyDown(KEY_UP)   || IsKeyDown(KEY_W) || IsKeyDown(KEY_DOWN)  || IsKeyDown(KEY_S);
 	bool hasHorizontalMovement = IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A) || IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D);
 
 
+
+	if (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S)) {
+		if (plr->position.y < bottomLimit) {
+			plr->position.y += hasHorizontalMovement ? sqrtSpeed : speed;
+			plrCurrentFrame->y = 1;
+		} else {
+			plr->position.y = bottomLimit;
+		}
+	}
+
+	if (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W)) {
+		if (plr->position.y > topLimit) {
+			plr->position.y -= hasHorizontalMovement ? sqrtSpeed : speed;
+			plrCurrentFrame->y = 3;
+		} else {
+			plr->position.y = topLimit;
+		}
+	}
+
 	if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A)) {
 		if (plr->position.x > leftLimit) {
 			plr->position.x -= hasVerticalMovement ? sqrtSpeed : speed;
+			plrCurrentFrame->y = 2;
 		} else {
 			plr->position.x = leftLimit;
 		}
@@ -119,36 +165,35 @@ void MovePlr(Character* plr, Texture plrTexture) {
 	if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D)) {
 		if (plr->position.x < rightLimit) {
 			plr->position.x += hasVerticalMovement ? sqrtSpeed : speed;
+			plrCurrentFrame->y = 4;
 		} else {
 			plr->position.x = rightLimit;
 		}
 	}
 
-	if (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W)) {
-		if (plr->position.y > topLimit) {
-			plr->position.y -= hasHorizontalMovement ? sqrtSpeed : speed;
-		} else {
-			plr->position.y = topLimit;
-		}
-	}
-
-	if (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S)) {
-		if (plr->position.y < bottomLimit) {
-			plr->position.y += hasHorizontalMovement ? sqrtSpeed : speed;
-		} else {
-			plr->position.y = bottomLimit;
-		}
-	}
+	return hasHorizontalMovement || hasVerticalMovement;
 }
 
 
 // HARD CODED SCENARIOS
-void DrawGameScenarios(int scenarioIndex) {
+void DrawGameScenarios(int scenarioIndex, LoadedAssets* assets) {
 	Color hitboxColor = DEBUG_MODE ? BLUE : (Color){0, 0, 0, 1};
 
-	if (scenarioIndex == 0) { // Kard Kassino Garden
+	for (int i = 0; i < assets->imageCount; i++) {
+		UnloadImage(assets->images[i].image);
+	}
+
+	for (int i = 0; i < assets->textureCount; i++) {
+		UnloadTexture(assets->textures[i].texture);
+	}
 		
 
+	if (scenarioIndex == 0) { // Kard Kassino Garden
+		Rectangle hb1 = {0, 0, 300, 300};
+		//assets->hitboxes[0] = (Hitbox){"Kard Kassino Garden Hitbox 1", hb1};
+		DrawRectangleRec(hb1, hitboxColor);
+
+		assets->hitboxCount = 1;
 	} else if (scenarioIndex == 1) { // Kard Kassino Entrace
 
 	} else if (scenarioIndex == 2) { // Kard Kassino Lobby
@@ -180,11 +225,23 @@ int main() {
 	SearchAndSetResourceDir("resources");
 
 	Spirit plrSpirit = {GetCenterOfScreen(), 8.5};
-	Character plr = {GetCenterOfScreen(), 13.7, 100, plrSpirit};
-	Texture wabbit = LoadTexture("wabbit_alpha.png");
+	Character plr = {GetCenterOfScreen(), 17.7, 100, plrSpirit};
+
+	LoadedAssets assets;
+	assets.imageCount = 0;
+	assets.textureCount = 0;
+	
+	assets.plrTexture = LoadTexture("playr.png");
 
 	bool spiritMode = false;
+	bool isMoving = false;
+
 	int scenario = 0;
+	int plrFrameI = 0;
+	Vector2 plrCurrentFrame = {0, 0};
+	int plrFrameAmount = 4;
+	int plrFrameSpeed = 3;
+	Rectangle plrFrame = {0, 0, assets.plrTexture.width / plrFrameAmount, assets.plrTexture.height / 5};
 
 
 	while (!WindowShouldClose()) {
@@ -200,7 +257,7 @@ int main() {
 
 		BeginDrawing();
 		ClearBackground(DARKGREEN);
-		//DrawGameScenarios(scenario);
+		DrawGameScenarios(scenario, &assets);
 
 
 
@@ -211,20 +268,35 @@ int main() {
 			DrawRectangle(plrSpirit.position.x - (playerSpiritSize / 2), plrSpirit.position.y - (playerSpiritSize / 2), playerSpiritSize, playerSpiritSize, RED);
 			DrawText("Spirit Mode: TRUE", 20, 50, 30, LIGHTGRAY);
 		} else {
-			MovePlr(&plr, wabbit);
+			bool hasMovement = MovePlr(&plr, plrFrame, &plrCurrentFrame);
 
-			DrawTextureEx(wabbit, plr.position, 0, 2, PINK);
+			if (hasMovement) {
+				plrFrameI++;
+				if (plrFrameI >= plrFrameSpeed) {
+					plrFrameI = 0;
+					plrCurrentFrame.x++;
+					if (plrCurrentFrame.x >= plrFrameAmount) {
+						plrCurrentFrame.x = 0;
+					}
+				}
+			} else if (isMoving != hasMovement) {
+				plrFrameI = 0;
+				plrCurrentFrame.x = plrCurrentFrame.y - 1;
+				plrCurrentFrame.y = 0;
+			}
+
+			isMoving = hasMovement;
+
+			DrawTextureRec(assets.plrTexture, (Rectangle){plrFrame.width * plrCurrentFrame.x, plrFrame.height * plrCurrentFrame.y, plrFrame.width, plrFrame.height}, plr.position, WHITE);
 			DrawText("Spirit Mode: FALSE", 20, 50, 30, LIGHTGRAY);
+			DrawText(TextFormat("Player Sprite State - (X:%.0f, Y:%.0f)", plrCurrentFrame.x, plrCurrentFrame.y), 20, GetScreenHeight() - 50, 30, LIGHTGRAY);
 		}
 		
 		DrawText("[SPACE] to toggle spirit mode!", 20, 20, 30, WHITE);
-		
-		
-		
 		EndDrawing();
 	}
 
-	UnloadTexture(wabbit);
+	UnloadTexture(assets.plrTexture);
 	CloseWindow();
 	return 0;
 }
