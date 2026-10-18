@@ -1,6 +1,7 @@
 #include <raylib.h>
 #include <resource_dir.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <math.h>
 
 
@@ -121,7 +122,16 @@ void MoveSpirit(Spirit* plrSpirit) {
 	}
 }
 
-bool MovePlr(Character* plr, Rectangle plrTextureRect, Vector2* plrCurrentFrame) {
+bool CheckColisions(Hitbox* hitboxes, int hitboxCount, Rectangle plrRect) {
+	for (int i = 0; i < hitboxCount; i++) {
+		if (CheckCollisionRecs(hitboxes[i].rect, plrRect)) {
+			return true;
+		}
+	}
+	return false;
+};
+
+bool MovePlr(Character* plr, Rectangle plrTextureRect, Vector2* plrCurrentFrame, LoadedAssets* assets) {
 	float speed       = plr->movespeed;
 	float sqrtSpeed   = speed / sqrt(2);
 
@@ -133,49 +143,65 @@ bool MovePlr(Character* plr, Rectangle plrTextureRect, Vector2* plrCurrentFrame)
 	bool hasVerticalMovement   = IsKeyDown(KEY_UP)   || IsKeyDown(KEY_W) || IsKeyDown(KEY_DOWN)  || IsKeyDown(KEY_S);
 	bool hasHorizontalMovement = IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A) || IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D);
 
+	float verticalStep = hasHorizontalMovement ? sqrtSpeed : speed;
+	float horizontalStep = hasVerticalMovement ? sqrtSpeed : speed;
 
 
 	if (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S)) {
-		if (plr->position.y < bottomLimit) {
-			plr->position.y += hasHorizontalMovement ? sqrtSpeed : speed;
-			plrCurrentFrame->y = 1;
-		} else {
-			plr->position.y = bottomLimit;
+		Rectangle futurePos = {plr->position.x, plr->position.y + verticalStep, plrTextureRect.width, plrTextureRect.height};
+
+		if (!CheckColisions(assets->hitboxes, assets->hitboxCount, futurePos)) {
+			if (plr->position.y >= bottomLimit) {
+				plr->position.y = bottomLimit;
+			} else {
+				plr->position.y += verticalStep;
+				plrCurrentFrame->y = 1;
+			}
 		}
 	}
 
 	if (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W)) {
-		if (plr->position.y > topLimit) {
-			plr->position.y -= hasHorizontalMovement ? sqrtSpeed : speed;
-			plrCurrentFrame->y = 3;
-		} else {
-			plr->position.y = topLimit;
+		Rectangle futurePos = {plr->position.x, plr->position.y - verticalStep, plrTextureRect.width, plrTextureRect.height};
+
+		if (!CheckColisions(assets->hitboxes, assets->hitboxCount, futurePos)) {
+			if (plr->position.y <= topLimit) {
+				plr->position.y = topLimit;
+			} else {
+				plr->position.y -= verticalStep;
+				plrCurrentFrame->y = 3;
+			}
 		}
 	}
 
 	if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A)) {
-		if (plr->position.x > leftLimit) {
-			plr->position.x -= hasVerticalMovement ? sqrtSpeed : speed;
-			plrCurrentFrame->y = 2;
-		} else {
-			plr->position.x = leftLimit;
+		Rectangle futurePos = {plr->position.x - horizontalStep, plr->position.y, plrTextureRect.width, plrTextureRect.height};
+
+		if (!CheckColisions(assets->hitboxes, assets->hitboxCount, futurePos)) {
+			if (plr->position.x <= leftLimit) {
+				plr->position.x = leftLimit;
+			} else {
+				plr->position.x -= horizontalStep;
+				plrCurrentFrame->y = 2;
+			}
 		}
 	}
 
 	if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D)) {
-		if (plr->position.x < rightLimit) {
-			plr->position.x += hasVerticalMovement ? sqrtSpeed : speed;
-			plrCurrentFrame->y = 4;
-		} else {
-			plr->position.x = rightLimit;
+		Rectangle futurePos = {plr->position.x + horizontalStep, plr->position.y, plrTextureRect.width, plrTextureRect.height};
+
+		if (!CheckColisions(assets->hitboxes, assets->hitboxCount, futurePos)) {
+			if (plr->position.x >= rightLimit) {
+				plr->position.x = rightLimit;
+			} else {
+				plr->position.x += horizontalStep;
+				plrCurrentFrame->y = 4;
+			}
 		}
 	}
 
 	return hasHorizontalMovement || hasVerticalMovement;
 }
 
-
-// HARD CODED SCENARIOS
 void DrawGameScenarios(int scenarioIndex, LoadedAssets* assets) {
 	Color hitboxColor = DEBUG_MODE ? BLUE : (Color){0, 0, 0, 1};
 
@@ -186,11 +212,17 @@ void DrawGameScenarios(int scenarioIndex, LoadedAssets* assets) {
 	for (int i = 0; i < assets->textureCount; i++) {
 		UnloadTexture(assets->textures[i].texture);
 	}
-		
+
+	if (assets->images != NULL) { free(assets->images); }
+	if (assets->textures != NULL) { free(assets->textures); }
+	if (assets->hitboxes != NULL) { free(assets->hitboxes); }
+	
 
 	if (scenarioIndex == 0) { // Kard Kassino Garden
-		Rectangle hb1 = {0, 0, 300, 300};
-		//assets->hitboxes[0] = (Hitbox){"Kard Kassino Garden Hitbox 1", hb1};
+		assets->hitboxes = (Hitbox*) malloc(sizeof(Hitbox) * 1);
+
+		Rectangle hb1 = {0, GetScreenHeight() - 350, 300, 300};
+		assets->hitboxes[0] = (Hitbox){"Kard Kassino Garden Hitbox 1", hb1};
 		DrawRectangleRec(hb1, hitboxColor);
 
 		assets->hitboxCount = 1;
@@ -227,11 +259,15 @@ int main() {
 	Spirit plrSpirit = {GetCenterOfScreen(), 8.5};
 	Character plr = {GetCenterOfScreen(), 17.7, 100, plrSpirit};
 
-	LoadedAssets assets;
-	assets.imageCount = 0;
-	assets.textureCount = 0;
-	
-	assets.plrTexture = LoadTexture("playr.png");
+	LoadedAssets *assets = malloc(sizeof(LoadedAssets));
+	assets->images = NULL;
+	assets->textures = NULL;
+	assets->hitboxes = NULL;
+	assets->imageCount = 0;
+	assets->textureCount = 0;
+	assets->hitboxCount = 0;
+
+	assets->plrTexture = LoadTexture("playr.png");
 
 	bool spiritMode = false;
 	bool isMoving = false;
@@ -241,7 +277,7 @@ int main() {
 	Vector2 plrCurrentFrame = {0, 0};
 	int plrFrameAmount = 4;
 	int plrFrameSpeed = 3;
-	Rectangle plrFrame = {0, 0, assets.plrTexture.width / plrFrameAmount, assets.plrTexture.height / 5};
+	Rectangle plrFrame = {0, 0, assets->plrTexture.width / plrFrameAmount, assets->plrTexture.height / 5};
 
 
 	while (!WindowShouldClose()) {
@@ -257,7 +293,7 @@ int main() {
 
 		BeginDrawing();
 		ClearBackground(DARKGREEN);
-		DrawGameScenarios(scenario, &assets);
+		DrawGameScenarios(scenario, assets);
 
 
 
@@ -268,7 +304,7 @@ int main() {
 			DrawRectangle(plrSpirit.position.x - (playerSpiritSize / 2), plrSpirit.position.y - (playerSpiritSize / 2), playerSpiritSize, playerSpiritSize, RED);
 			DrawText("Spirit Mode: TRUE", 20, 50, 30, LIGHTGRAY);
 		} else {
-			bool hasMovement = MovePlr(&plr, plrFrame, &plrCurrentFrame);
+			bool hasMovement = MovePlr(&plr, plrFrame, &plrCurrentFrame, assets);
 
 			if (hasMovement) {
 				plrFrameI++;
@@ -287,7 +323,7 @@ int main() {
 
 			isMoving = hasMovement;
 
-			DrawTextureRec(assets.plrTexture, (Rectangle){plrFrame.width * plrCurrentFrame.x, plrFrame.height * plrCurrentFrame.y, plrFrame.width, plrFrame.height}, plr.position, WHITE);
+			DrawTextureRec(assets->plrTexture, (Rectangle){plrFrame.width * plrCurrentFrame.x, plrFrame.height * plrCurrentFrame.y, plrFrame.width, plrFrame.height}, plr.position, WHITE);
 			DrawText("Spirit Mode: FALSE", 20, 50, 30, LIGHTGRAY);
 			DrawText(TextFormat("Player Sprite State - (X:%.0f, Y:%.0f)", plrCurrentFrame.x, plrCurrentFrame.y), 20, GetScreenHeight() - 50, 30, LIGHTGRAY);
 		}
@@ -296,7 +332,12 @@ int main() {
 		EndDrawing();
 	}
 
-	UnloadTexture(assets.plrTexture);
+	UnloadTexture(assets->plrTexture);
 	CloseWindow();
+
+	if (assets->images != NULL) { free(assets->images); }
+	if (assets->textures != NULL) { free(assets->textures); }
+	if (assets->hitboxes != NULL) { free(assets->hitboxes); }
+	if (assets != NULL) { free(assets); }
 	return 0;
-}
+}	
