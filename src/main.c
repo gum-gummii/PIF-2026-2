@@ -329,6 +329,7 @@ int main() {
 		}
 		
 		DrawText("press SPACE to toggle spirit mode!", 20, 20, 30, WHITE);
+		DrawText(TextFormat("HP: %d", plr.hp), 20, 80, 30, RED);
 		EndDrawing();
 	}
 
