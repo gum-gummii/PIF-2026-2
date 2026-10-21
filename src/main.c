@@ -328,7 +328,7 @@ int main() {
 			DrawText(TextFormat("Player Sprite State - (X:%.0f, Y:%.0f)", plrCurrentFrame.x, plrCurrentFrame.y), 20, GetScreenHeight() - 50, 30, LIGHTGRAY);
 		}
 		
-		DrawText("[SPACE] to toggle spirit mode!", 20, 20, 30, WHITE);
+		DrawText("press SPACE to toggle spirit mode!", 20, 20, 30, WHITE);
 		EndDrawing();
 	}
 
