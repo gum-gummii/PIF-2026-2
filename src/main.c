@@ -5,6 +5,7 @@
 #include <string.h>
 #include <math.h>
 #include <classes.h>
+#include <time.h>
 
 
 
@@ -24,6 +25,7 @@ typedef struct {
 
 bool DEBUG_MODE = true;
 int playerSpiritSize = 40;
+int dmgDebounce = 0; 
 int getBattleSquareSize() {
 	return GetScreenHeight() - 50;
 }
@@ -111,7 +113,8 @@ bool MovePlr(Character* plr, Rectangle plrTextureRect, Vector2* plrCurrentFrame,
 
 	bool hasVerticalMovement   = IsKeyDown(KEY_UP)   || IsKeyDown(KEY_W) || IsKeyDown(KEY_DOWN)  || IsKeyDown(KEY_S);
 	bool hasHorizontalMovement = IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A) || IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D);
-	Rectangle futurePos;
+	bool moved = false;
+	Rectangle futurePos = {0, 0, 0, 0};
 
 	float verticalStep = hasHorizontalMovement ? sqrtSpeed : speed;
 	float horizontalStep = hasVerticalMovement ? sqrtSpeed : speed;
@@ -119,6 +122,7 @@ bool MovePlr(Character* plr, Rectangle plrTextureRect, Vector2* plrCurrentFrame,
 
 	if (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S)) {
 		futurePos = (Rectangle){plr->position.x, plr->position.y + verticalStep, plrTextureRect.width, plrTextureRect.height};
+		moved = true;
 		
 		if (!Assets->CheckColisions(Assets, futurePos)) {
 			if (plr->position.y >= bottomLimit) {
@@ -132,6 +136,7 @@ bool MovePlr(Character* plr, Rectangle plrTextureRect, Vector2* plrCurrentFrame,
 
 	if (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W)) {
 		futurePos = (Rectangle){plr->position.x, plr->position.y - verticalStep, plrTextureRect.width, plrTextureRect.height};
+		moved = true;
 
 		if (!Assets->CheckColisions(Assets, futurePos)) {
 			if (plr->position.y <= topLimit) {
@@ -145,6 +150,7 @@ bool MovePlr(Character* plr, Rectangle plrTextureRect, Vector2* plrCurrentFrame,
 
 	if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A)) {
 		futurePos = (Rectangle){plr->position.x - horizontalStep, plr->position.y, plrTextureRect.width, plrTextureRect.height};
+		moved = true;
 
 		if (!Assets->CheckColisions(Assets, futurePos)) {
 			if (plr->position.x <= leftLimit) {
@@ -158,6 +164,7 @@ bool MovePlr(Character* plr, Rectangle plrTextureRect, Vector2* plrCurrentFrame,
 
 	if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D)) {
 		futurePos = (Rectangle){plr->position.x + horizontalStep, plr->position.y, plrTextureRect.width, plrTextureRect.height};
+		moved = true;
 
 		if (!Assets->CheckColisions(Assets, futurePos)) {
 			if (plr->position.x >= rightLimit) {
@@ -170,9 +177,14 @@ bool MovePlr(Character* plr, Rectangle plrTextureRect, Vector2* plrCurrentFrame,
 	}
 
 
-	float dmg = Assets->CheckDamageColisions(Assets, futurePos);
-	if (dmg != 0) {
-		plr->hp -= dmg;
+	int sec = (int) time(NULL);
+	printf("time: %d\ndb: %d\n", sec, dmgDebounce);
+	if (dmgDebounce - sec <= 0 && moved) {
+		float dmg = Assets->CheckDamageColisions(Assets, futurePos);
+		if (dmg != 0) {
+			plr->hp -= dmg;
+			dmgDebounce = dmg;
+		}
 	}
 
 	return hasHorizontalMovement || hasVerticalMovement;
@@ -206,7 +218,15 @@ void DrawGameScenarios(int scenarioIndex, LoadedAssetsClass* Assets) {
 
 		Rectangle hb2 = {0, 0, 150, 150};
 		Assets->NewHitbox(Assets, "KardKassinoGarden_HB2", hb2, false, 10);
+
+		Rectangle hb3 = {GetScreenWidth() - 200, 0, 200, 200};
+		Assets->NewHitbox(Assets, "KardKassinoGarden_HB3", hb3, false, -25);
 	} else if (scenarioIndex == 1) { // Kard Kassino Entrace
+		Rectangle hb1 = {0, 0, (GetScreenWidth() /2), (GetScreenHeight()/2) - 140};
+		Assets->NewHitbox(Assets, "arar", hb1, true, 0);
+
+		Rectangle hb2 = {GetScreenHeight() - ((GetScreenHeight()/2) - 140), 0, (GetScreenWidth() /2), (GetScreenHeight()/2) - 140};
+		Assets->NewHitbox(Assets, "arar", hb2, true, 0);
 
 	} else if (scenarioIndex == 2) { // Kard Kassino Lobby
 
@@ -237,7 +257,11 @@ int main() {
 	SearchAndSetResourceDir("resources");
 
 	Spirit plrSpirit = {GetCenterOfScreen(), 8.5};
-	Character plr = {GetCenterOfScreen(), 17.7, 100, plrSpirit};
+	Character* plr = (Character*) malloc(sizeof(Character));
+	plr->hp = 100;
+	plr->movespeed = 17.5;
+	plr->spirit = plrSpirit;
+	plr->position = GetCenterOfScreen();
 
 	LoadedAssetsClass* Assets = InitLoadedAssets();
 	Assets->plrTexture = LoadTexture("playr.png");
@@ -259,6 +283,9 @@ int main() {
 		if (IsKeyPressed(KEY_P)) {
 			debugInfo = !debugInfo;
 		}
+
+		if (IsKeyPressed(KEY_Q)) { scenario -= 1; }
+		if (IsKeyPressed(KEY_E)) { scenario += 1; }
 
 		if (IsKeyPressed(KEY_SPACE)) {
 			spiritMode = !spiritMode;
@@ -286,9 +313,8 @@ int main() {
 
 			DrawBattleBackground(getBattleSquareSize());
 			DrawRectangle(plrSpirit.position.x - (playerSpiritSize / 2), plrSpirit.position.y - (playerSpiritSize / 2), playerSpiritSize, playerSpiritSize, RED);
-			if (debugInfo) { DrawText("Spirit Mode: ON   ([SPACE] to toggle!)", 15, 50, 20, LIGHTGRAY); }
 		} else {
-			bool hasMovement = MovePlr(&plr, plrFrame, &plrCurrentFrame, Assets);
+			bool hasMovement = MovePlr(plr, plrFrame, &plrCurrentFrame, Assets);
 
 			if (hasMovement) {
 				plrFrameI++;
@@ -307,14 +333,18 @@ int main() {
 
 			isMoving = hasMovement;
 
-			DrawTextureRec(Assets->plrTexture, (Rectangle){plrFrame.width * plrCurrentFrame.x, plrFrame.height * plrCurrentFrame.y, plrFrame.width, plrFrame.height}, plr.position, WHITE);
-			if (debugInfo) { DrawText("Spirit Mode: OFF ([SPACE] to toggle!)", 15, 50, 20, LIGHTGRAY); }
-			if (debugInfo) { DrawText(TextFormat("Player Sprite State - (X:%.0f, Y:%.0f)", plrCurrentFrame.x, plrCurrentFrame.y), 15, GetScreenHeight() - 40, 20, LIGHTGRAY); }
+			DrawTextureRec(Assets->plrTexture, (Rectangle){plrFrame.width * plrCurrentFrame.x, plrFrame.height * plrCurrentFrame.y, plrFrame.width, plrFrame.height}, plr->position, WHITE);
 		}
 		
 		DrawText("Press [P] to show/hide debug info!", 15, 20, 30, WHITE);
-		if (debugInfo) { DrawText(TextFormat("HP: %d", plr.hp), 15, 70, 20, RED); }
-		if (debugInfo) { DrawText(TextFormat("Loaded Hitboxes: %d", Assets->GetHitboxAmount(Assets)), 15, 90, 20, BLUE); }
+		if (debugInfo) {
+			DrawText(TextFormat("HP: %d", plr->hp), 15, 70, 20, RED);
+			DrawText(TextFormat("Loaded Hitboxes: %d", Assets->GetHitboxAmount(Assets)), 15, 90, 20, BLUE);
+
+			char* spiritStateStr = (spiritMode == true) ? "ON" : "OFF";
+			DrawText(TextFormat("Spirit Mode: %s ([SPACE] to toggle!)", spiritStateStr), 15, 50, 20, LIGHTGRAY);
+			if (spiritMode) { DrawText(TextFormat("Player Sprite State - (X:%.0f, Y:%.0f)", plrCurrentFrame.x, plrCurrentFrame.y), 15, GetScreenHeight() - 40, 20, LIGHTGRAY); }
+		}
 		EndDrawing();
 	}
 
