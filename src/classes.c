@@ -111,9 +111,22 @@ Hitbox* ____findhitboxfunction(LoadedAssetsClass* self, char* hitboxName) {
 
 	return NULL;
 }
-void ____freehitboxesfunction(LoadedAssetsClass* self) {
+void __freeHitboxes(LoadedAssetsClass* self) {
+	//if (self->hitboxHead != NULL) {
+	//	Hitbox* current = self->hitboxHead;
+	//	Hitbox* next = self->hitboxHead->next;
+	//	free(current);
+	//
+	//	while (next != NULL) {
+	//		current = next;
+	//		next = current;
+	//		free(current);
+	//	}
+	//}
+
 	if (self->hitboxHead != NULL) {
 		free(self->hitboxHead);
+		self->hitboxHead = NULL;
 	}
 }
 bool __checkHitboxColision(LoadedAssetsClass* self, Rectangle collider) {
@@ -253,6 +266,7 @@ void __freeImages(LoadedAssetsClass* self) {
 
 	if (self->imageHead != NULL) {
 		free(self->imageHead);
+		self->imageHead = NULL;
 	}
 }
 int __imageAmount(LoadedAssetsClass* self) {
@@ -291,7 +305,7 @@ LoadedAssetsClass* InitLoadedAssets() {
 	assets->GetLastHitbox = ____getlasthitboxfunction;
 	assets->RemoveHitbox = ____removehitboxbyptrfunction;
 	assets->FindHitboxByName = ____findhitboxfunction;
-	assets->FreeHitboxes = ____freehitboxesfunction;
+	assets->FreeHitboxes = __freeHitboxes;
 	assets->CheckColisions = __checkHitboxColision;
 	assets->CheckDamageColisions = __checkDamageColision;
 	assets->GetHitboxAmount = ____hitboxamountfunction;

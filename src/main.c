@@ -23,23 +23,18 @@ typedef struct {
 
 
 
-bool DEBUG_MODE = true;
+const bool DEBUG_MODE = true;
+const float DMG_COOLDOWN = 0.8;
+
 int playerSpiritSize = 40;
-int dmgDebounce = 0; 
-int getBattleSquareSize() {
-	return GetScreenHeight() - 50;
-}
-int getBattleBorderSize() {
-	return (int)round(getBattleSquareSize() / 50);
-}
+float dmgDebounce = 0;
+float clockTimestampMs = 0;
+
+int GetBattleSquareSize() { return GetScreenHeight() - 50; }
+int GetBattleBorderSize() { return (int)round(GetBattleSquareSize() / 50); }
+Vector2 GetCenterOfScreen() { return (Vector2){GetScreenWidth() / 2, GetScreenHeight() / 2}; }
 
 
-Vector2 GetCenterOfScreen() {
-	float x = GetScreenWidth() / 2;
-	float y = GetScreenHeight() / 2;
-	
-	return (Vector2){x, y};
-}
 
 void DrawBattleBackground(int squareSize) {
 	float x = (GetScreenWidth() / 2) - (squareSize / 2);
@@ -50,20 +45,18 @@ void DrawBattleBackground(int squareSize) {
 
 	DrawRectangle(x, y, squareSize, squareSize, bgColor);
 	DrawRectangleRec(box, bgColor);
-	DrawRectangleLinesEx(box, getBattleBorderSize(), GREEN);
+	DrawRectangleLinesEx(box, GetBattleBorderSize(), GREEN);
 }
-
-
 
 void MoveSpirit(Spirit* plrSpirit) {
 	Vector2 center    = GetCenterOfScreen();
 	float speed       = plrSpirit->movespeed;
 	float sqrtSpeed   = speed / sqrt(2);
 
-	float leftLimit   = center.x - (getBattleSquareSize() / 2) + (playerSpiritSize / 2) + getBattleBorderSize();
-	float topLimit    = center.y - (getBattleSquareSize() / 2) + (playerSpiritSize / 2) + getBattleBorderSize();
-	float rightLimit  = center.x - (playerSpiritSize / 2) + (getBattleSquareSize() / 2) - getBattleBorderSize();
-	float bottomLimit = center.y - (playerSpiritSize / 2) + (getBattleSquareSize() / 2) - getBattleBorderSize();
+	float leftLimit   = center.x - (GetBattleSquareSize() / 2) + (playerSpiritSize / 2) + GetBattleBorderSize();
+	float topLimit    = center.y - (GetBattleSquareSize() / 2) + (playerSpiritSize / 2) + GetBattleBorderSize();
+	float rightLimit  = center.x - (playerSpiritSize / 2) + (GetBattleSquareSize() / 2) - GetBattleBorderSize();
+	float bottomLimit = center.y - (playerSpiritSize / 2) + (GetBattleSquareSize() / 2) - GetBattleBorderSize();
 
 
 	bool hasVerticalMovement   = IsKeyDown(KEY_UP)   || IsKeyDown(KEY_W) || IsKeyDown(KEY_DOWN)  || IsKeyDown(KEY_S);
@@ -177,13 +170,12 @@ bool MovePlr(Character* plr, Rectangle plrTextureRect, Vector2* plrCurrentFrame,
 	}
 
 
-	int sec = (int) time(NULL);
-	printf("time: %d\ndb: %d\n", sec, dmgDebounce);
-	if (dmgDebounce - sec <= 0 && moved) {
+	//printf("time: %d\ndb: %d\n", sec, dmgDebounce);
+	if (dmgDebounce - clockTimestampMs <= 0 && moved) {
 		float dmg = Assets->CheckDamageColisions(Assets, futurePos);
 		if (dmg != 0) {
 			plr->hp -= dmg;
-			dmgDebounce = dmg;
+			if (dmg > 0) { dmgDebounce = clockTimestampMs + DMG_COOLDOWN; }
 		}
 	}
 
@@ -208,7 +200,6 @@ bool MovePlr(Character* plr, Rectangle plrTextureRect, Vector2* plrCurrentFrame,
 
 
 void DrawGameScenarios(int scenarioIndex, LoadedAssetsClass* Assets) {
-
 	Assets->FreeHitboxes(Assets);
 	Assets->FreeImages(Assets);
 	
@@ -222,11 +213,14 @@ void DrawGameScenarios(int scenarioIndex, LoadedAssetsClass* Assets) {
 		Rectangle hb3 = {GetScreenWidth() - 200, 0, 200, 200};
 		Assets->NewHitbox(Assets, "KardKassinoGarden_HB3", hb3, false, -25);
 	} else if (scenarioIndex == 1) { // Kard Kassino Entrace
-		Rectangle hb1 = {0, 0, (GetScreenWidth() /2), (GetScreenHeight()/2) - 140};
+		Rectangle hb1 = {0, 0, (GetScreenWidth() /1.5), (GetScreenHeight()/2) - 140};
 		Assets->NewHitbox(Assets, "arar", hb1, true, 0);
 
-		Rectangle hb2 = {GetScreenHeight() - ((GetScreenHeight()/2) - 140), 0, (GetScreenWidth() /2), (GetScreenHeight()/2) - 140};
-		Assets->NewHitbox(Assets, "arar", hb2, true, 0);
+		Rectangle hb2 = {0, (GetScreenHeight() - ((GetScreenHeight()/2) - 140)), (GetScreenWidth() /1.5), (GetScreenHeight()/2) - 140};
+		Assets->NewHitbox(Assets, "arare", hb2, true, 0);
+
+		Rectangle hb3 = {GetScreenWidth() / 2, (GetScreenHeight()/2) - 140, 35, 280};
+		Assets->NewHitbox(Assets, "healer", hb3, false, -30);
 
 	} else if (scenarioIndex == 2) { // Kard Kassino Lobby
 
@@ -271,7 +265,7 @@ int main() {
 	bool debugInfo = false;
 
 	int lastScenario = -1;
-	int scenario = 0;
+	int scenario = 1;
 	int plrFrameI = 0;
 	Vector2 plrCurrentFrame = {0, 0};
 	int plrFrameAmount = 4;
@@ -280,12 +274,15 @@ int main() {
 
 
 	while (!WindowShouldClose()) {
+		WaitTime(1.0 / 60.0);
+		clockTimestampMs += (1.0 / 60.0);
+
 		if (IsKeyPressed(KEY_P)) {
 			debugInfo = !debugInfo;
 		}
 
 		if (IsKeyPressed(KEY_Q)) { scenario -= 1; }
-		if (IsKeyPressed(KEY_E)) { scenario += 1; }
+		if (IsKeyPressed(KEY_E)) { scenario += 1; printf("NEXT"); }
 
 		if (IsKeyPressed(KEY_SPACE)) {
 			spiritMode = !spiritMode;
@@ -311,7 +308,7 @@ int main() {
 		if (spiritMode) {
 			MoveSpirit(&plrSpirit);
 
-			DrawBattleBackground(getBattleSquareSize());
+			DrawBattleBackground(GetBattleSquareSize());
 			DrawRectangle(plrSpirit.position.x - (playerSpiritSize / 2), plrSpirit.position.y - (playerSpiritSize / 2), playerSpiritSize, playerSpiritSize, RED);
 		} else {
 			bool hasMovement = MovePlr(plr, plrFrame, &plrCurrentFrame, Assets);
@@ -340,6 +337,7 @@ int main() {
 		if (debugInfo) {
 			DrawText(TextFormat("HP: %d", plr->hp), 15, 70, 20, RED);
 			DrawText(TextFormat("Loaded Hitboxes: %d", Assets->GetHitboxAmount(Assets)), 15, 90, 20, BLUE);
+			DrawText(TextFormat("Scenario: %d", scenario), 15, 110, 20, LIGHTGRAY);
 
 			char* spiritStateStr = (spiritMode == true) ? "ON" : "OFF";
 			DrawText(TextFormat("Spirit Mode: %s ([SPACE] to toggle!)", spiritStateStr), 15, 50, 20, LIGHTGRAY);
