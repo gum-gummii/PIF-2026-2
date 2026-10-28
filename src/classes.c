@@ -9,13 +9,11 @@ typedef struct LoadedImage {
 	Image image;
 	struct LoadedImage* next;
 } LoadedImage;
-
 typedef struct LoadedTexture {
 	char* name;
 	Texture texture;
 	struct LoadedTexture* next; 
 } LoadedTexture;
-
 typedef struct Hitbox {
 	char* name;
 	Rectangle rect;
@@ -23,7 +21,6 @@ typedef struct Hitbox {
 	float dmg;
 	struct Hitbox* next;
 } Hitbox;
-
 typedef struct LoadedAssetsClass {
 	Hitbox* hitboxHead;
 	void (*NewHitbox)(struct LoadedAssetsClass*, char*, Rectangle, bool, float);
@@ -49,7 +46,6 @@ typedef struct LoadedAssetsClass {
 
 	Texture plrTexture;
 } LoadedAssetsClass;
-
 
 
 void __newHitbox(LoadedAssetsClass* self, char* hitboxName, Rectangle hitboxRect, bool canCollide, float dmg) {
@@ -323,4 +319,59 @@ LoadedAssetsClass* InitLoadedAssets() {
 	assets->UnloadImages = __unloadImages;
 
 	return assets;
+}
+
+
+
+
+
+
+
+
+
+typedef struct LineBulletNode {
+	LineBulletNode* next;
+	Vector2 positionStart;
+	Vector2 positionEnd;
+	Color color;
+} LineBulletNode;
+typedef struct BulletClass {
+	LineBulletNode* lineBulletsHead;
+	LineBulletNode* (*NewLineBullet)(struct BulletClass* self, Color color, Vector2 posStart, Vector2 posEnd);
+} BulletClass;
+
+LineBulletNode* __newLineBullet(BulletClass* self, Color color, Vector2 posStart, Vector2 posEnd) {
+	LineBulletNode* node = (LineBulletNode*) malloc(sizeof(LineBulletNode));
+	node->next = NULL;
+	node->color = color;
+	node->positionEnd = posEnd;
+	node->positionStart = posStart;
+	
+	if (self->lineBulletsHead == NULL) {
+		self->lineBulletsHead = node;
+	} else {
+		LineBulletNode* previousNode =self->lineBulletsHead;
+		while (previousNode->next != NULL) { previousNode = previousNode->next; }
+		previousNode->next = node;
+	}
+}
+void __freeBullets(BulletClass* self) {
+	if (self->lineBulletsHead != NULL) {
+		free(self->lineBulletsHead);
+		self->lineBulletsHead = NULL;
+	}
+}
+void __removeLineBulletByPtr(BulletClass* self, LineBulletNode* ptrBullet) {
+	if (self->lineBulletsHead == ptrBullet) {
+		self->lineBulletsHead = (self->lineBulletsHead->next != NULL) ? self->lineBulletsHead->next : NULL;
+		free(ptrBullet);
+	} else {
+		LineBulletNode* previousNode = self->lineBulletsHead;
+		while (previousNode->next != ptrBullet) {
+			previousNode = previousNode->next;
+		}
+
+		previousNode->next = (previousNode->next->next != NULL) ? previousNode->next->next : NULL;
+		free(ptrBullet);
+	}
 }
