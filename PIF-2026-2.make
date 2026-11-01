@@ -118,7 +118,9 @@ endif
 GENERATED :=
 OBJECTS :=
 
+GENERATED += $(OBJDIR)/classes.o
 GENERATED += $(OBJDIR)/main.o
+OBJECTS += $(OBJDIR)/classes.o
 OBJECTS += $(OBJDIR)/main.o
 
 # Rules
@@ -183,6 +185,9 @@ endif
 # File Rules
 # #############################################
 
+$(OBJDIR)/classes.o: src/classes.c
+	@echo "$(notdir $<)"
+	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 $(OBJDIR)/main.o: src/main.c
 	@echo "$(notdir $<)"
 	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
