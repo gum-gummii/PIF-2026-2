@@ -29,6 +29,7 @@ const float DMG_COOLDOWN = 0.8;
 int playerSpiritSize = 40;
 float dmgDebounce = 0;
 float clockTimestampMs = 0;
+Vector2 worldSize = {0, 0};
 
 int GetBattleSquareSize() { return GetScreenHeight() - 50; }
 int GetBattleBorderSize() { return (int)round(GetBattleSquareSize() / 50); }
@@ -90,8 +91,8 @@ bool MovePlr(Character* plr, Rectangle plrTextureRect, Vector2* plrCurrentFrame,
 
 	float leftLimit   = 0;
 	float topLimit    = 0;
-	float rightLimit  = GetScreenWidth() - plrTextureRect.width;
-	float bottomLimit = GetScreenHeight() - plrTextureRect.height;
+	float rightLimit  = worldSize.x - plrTextureRect.width;
+	float bottomLimit = worldSize.y - plrTextureRect.height;
 
 	bool hasVerticalMovement   = IsKeyDown(KEY_UP)   || IsKeyDown(KEY_W) || IsKeyDown(KEY_DOWN)  || IsKeyDown(KEY_S);
 	bool hasHorizontalMovement = IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A) || IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D);
@@ -157,6 +158,43 @@ bool MovePlr(Character* plr, Rectangle plrTextureRect, Vector2* plrCurrentFrame,
 	}
 
 	return hasHorizontalMovement || hasVerticalMovement;
+}
+
+void FollowPlayerWithCamera(Camera2D* camera, Vector2 plrPosition, Rectangle plrFrame) {
+	float margin = GetScreenWidth() / 3.0f;
+	float plrScreenX = plrPosition.x - camera->target.x;
+
+	if (plrScreenX < margin) {
+		camera->target.x = plrPosition.x - margin;
+	} else if (plrScreenX + plrFrame.width > GetScreenWidth() - margin) {
+		camera->target.x = plrPosition.x + plrFrame.width - (GetScreenWidth() - margin);
+	}
+
+	float maxX = fmaxf(worldSize.x - GetScreenWidth(), 0);
+	camera->target.x = fminf(fmaxf(camera->target.x, 0), maxX);
+}
+
+void SetupWorld(Camera2D* camera, Character* plr, Rectangle plrFrame, Texture2D* background) {
+	if (background != NULL) {
+		float scale = (float)GetScreenHeight() / background->height;
+		worldSize = (Vector2){background->width * scale, GetScreenHeight()};
+	} else {
+		worldSize = (Vector2){GetScreenWidth(), GetScreenHeight()};
+	}
+
+	camera->target = (Vector2){0, 0};
+	plr->position.x = fminf(plr->position.x, worldSize.x - plrFrame.width);
+	FollowPlayerWithCamera(camera, plr->position, plrFrame);
+}
+
+void DrawWorld(Texture2D* background, LoadedAssetsClass* Assets, bool debugInfo) {
+	if (background != NULL) {
+		Rectangle source = {0, 0, background->width, background->height};
+		Rectangle dest = {0, 0, worldSize.x, worldSize.y};
+		DrawTexturePro(*background, source, dest, (Vector2){0, 0}, 0, WHITE);
+	}
+
+	if (debugInfo) { Assets->DrawHitboxes(Assets); }
 }
 
 //void LoadDrawGameScenarios(int scenarioIndex, LoadedAssetsClass* Assets) {
@@ -249,12 +287,17 @@ int main() {
 	bool debugInfo = false;
 
 	int lastScenario = -1;
-	int scenario = 1;
+	int scenario = 0;
 	int plrFrameI = 0;
 	Vector2 plrCurrentFrame = {0, 0};
 	int plrFrameAmount = 4;
 	int plrFrameSpeed = 3;
 	Rectangle plrFrame = {0, 0, Assets->plrTexture.width / plrFrameAmount, Assets->plrTexture.height / 5};
+
+	Texture2D gardenBackground = LoadTexture("kardkassino_garden.png");
+	Texture2D* background = NULL;
+	Camera2D camera = {0};
+	camera.zoom = 1.0f;
 
 
 	while (!WindowShouldClose()) {
@@ -284,12 +327,18 @@ int main() {
 		if (lastScenario != scenario) {
 			lastScenario = scenario;
 			DrawGameScenarios(scenario, Assets);
+
+			background = (scenario == 0 && gardenBackground.id != 0) ? &gardenBackground : NULL;
+			SetupWorld(&camera, plr, plrFrame, background);
 		}
-		if (debugInfo) { Assets->DrawHitboxes(Assets); }
 
 
 
 		if (spiritMode) {
+			BeginMode2D(camera);
+			DrawWorld(background, Assets, debugInfo);
+			EndMode2D();
+
 			MoveSpirit(&plrSpirit);
 
 			DrawBattleBackground(GetBattleSquareSize());
@@ -314,7 +363,12 @@ int main() {
 
 			isMoving = hasMovement;
 
+			FollowPlayerWithCamera(&camera, plr->position, plrFrame);
+
+			BeginMode2D(camera);
+			DrawWorld(background, Assets, debugInfo);
 			DrawTextureRec(Assets->plrTexture, (Rectangle){plrFrame.width * plrCurrentFrame.x, plrFrame.height * plrCurrentFrame.y, plrFrame.width, plrFrame.height}, plr->position, WHITE);
+			EndMode2D();
 		}
 
 		DrawText("Press [P] to show/hide debug info!", 15, 20, 30, WHITE);
@@ -330,6 +384,7 @@ int main() {
 		EndDrawing();
 	}
 
+	UnloadTexture(gardenBackground);
 	UnloadTexture(Assets->plrTexture);
 	CloseWindow();
 
