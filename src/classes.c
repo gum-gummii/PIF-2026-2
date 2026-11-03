@@ -330,7 +330,7 @@ LoadedAssetsClass* InitLoadedAssets() {
 
 
 typedef struct LineBulletNode {
-	LineBulletNode* next;
+	struct LineBulletNode* next;
 	Vector2 positionStart;
 	Vector2 positionEnd;
 	Color color;
