@@ -44,7 +44,6 @@ void DrawBattleBackground(int squareSize) {
 	Rectangle box = {x, y, squareSize, squareSize};
 	Color bgColor = {0, 0, 0, 100};
 
-	DrawRectangle(x, y, squareSize, squareSize, bgColor);
 	DrawRectangleRec(box, bgColor);
 	DrawRectangleLinesEx(box, GetBattleBorderSize(), GREEN);
 }
@@ -63,37 +62,27 @@ void MoveSpirit(Spirit* plrSpirit) {
 	bool hasVerticalMovement   = IsKeyDown(KEY_UP)   || IsKeyDown(KEY_W) || IsKeyDown(KEY_DOWN)  || IsKeyDown(KEY_S);
 	bool hasHorizontalMovement = IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A) || IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D);
 
+	float verticalStep   = hasHorizontalMovement ? sqrtSpeed : speed;
+	float horizontalStep = hasVerticalMovement ? sqrtSpeed : speed;
+
 	if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A)) {
-		if (plrSpirit->position.x > leftLimit) {
-			plrSpirit->position.x -= hasVerticalMovement ? sqrtSpeed : speed;
-		} else {
-			plrSpirit->position.x = leftLimit;
-		}
+		plrSpirit->position.x -= horizontalStep;
 	}
 
 	if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D)) {
-		if (plrSpirit->position.x < rightLimit) {
-			plrSpirit->position.x += hasVerticalMovement ? sqrtSpeed : speed;
-		} else {
-			plrSpirit->position.x = rightLimit;
-		}
+		plrSpirit->position.x += horizontalStep;
 	}
 
 	if (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W)) {
-		if (plrSpirit->position.y > topLimit) {
-			plrSpirit->position.y -= hasHorizontalMovement ? sqrtSpeed : speed;
-		} else {
-			plrSpirit->position.y = topLimit;
-		}
+		plrSpirit->position.y -= verticalStep;
 	}
 
 	if (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S)) {
-		if (plrSpirit->position.y < bottomLimit) {
-			plrSpirit->position.y += hasHorizontalMovement ? sqrtSpeed : speed;
-		} else {
-			plrSpirit->position.y = bottomLimit;
-		}
+		plrSpirit->position.y += verticalStep;
 	}
+
+	plrSpirit->position.x = fminf(fmaxf(plrSpirit->position.x, leftLimit), rightLimit);
+	plrSpirit->position.y = fminf(fmaxf(plrSpirit->position.y, topLimit), bottomLimit);
 }
 
 bool MovePlr(Character* plr, Rectangle plrTextureRect, Vector2* plrCurrentFrame, LoadedAssetsClass* Assets) {
@@ -227,7 +216,7 @@ void DrawWorld(Texture2D* background, LoadedAssetsClass* Assets, bool debugInfo)
 void DrawGameScenarios(int scenarioIndex, LoadedAssetsClass* Assets) {
 	Assets->FreeHitboxes(Assets);
 	Assets->FreeImages(Assets);
-	
+
 	if (scenarioIndex == 0) { // Kard Kassino Garden
 		Rectangle hb1 = {0, GetScreenHeight() - 350, 300, 300};
 		Assets->NewHitbox(Assets, "KardKassinoGarden_HB1", hb1, true, 0);
@@ -250,7 +239,7 @@ void DrawGameScenarios(int scenarioIndex, LoadedAssetsClass* Assets) {
 	} else if (scenarioIndex == 2) { // Kard Kassino Lobby
 
 	} else if (scenarioIndex == 3) { // Kard Kassino Tables
-		
+
 	} else if (scenarioIndex == 4) { // Kard Kassino Bar
 
 	} else if (scenarioIndex == 5) { // Kard Kassino Backstage
@@ -272,7 +261,7 @@ void DrawGameScenarios(int scenarioIndex, LoadedAssetsClass* Assets) {
 
 int main() {
 	SetConfigFlags(FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI);
-	InitWindow(GetScreenWidth(), GetScreenHeight(), "ALTERNUDE");
+	InitWindow(1280, 720, "ALTERNUDE");
 	SearchAndSetResourceDir("resources");
 
 	Spirit plrSpirit = {GetCenterOfScreen(), 8.5};
@@ -297,7 +286,7 @@ int main() {
 	bool debugInfo = false;
 
 	int lastScenario = -1;
-	int scenario = 1;
+	int scenario = 0;
 	int plrFrameI = 0;
 	Vector2 plrCurrentFrame = {0, 0};
 	int plrFrameAmount = 4;
@@ -341,11 +330,14 @@ int main() {
 			background = (scenario == 0 && gardenBackground.id != 0) ? &gardenBackground : NULL;
 			SetupWorld(&camera, plr, plrFrame, background);
 		}
-		if (debugInfo) { Assets->DrawHitboxes(Assets); }
 
 
 
 		if (spiritMode) {
+			BeginMode2D(camera);
+			DrawWorld(background, Assets, debugInfo);
+			EndMode2D();
+
 			MoveSpirit(&plrSpirit);
 
 			DrawBattleBackground(GetBattleSquareSize());
@@ -377,7 +369,7 @@ int main() {
 			DrawTextureRec(Assets->plrTexture, (Rectangle){plrFrame.width * plrCurrentFrame.x, plrFrame.height * plrCurrentFrame.y, plrFrame.width, plrFrame.height}, plr->position, WHITE);
 			EndMode2D();
 		}
-		
+
 		DrawText("Press [P] to show/hide debug info!", 15, 20, 30, WHITE);
 		if (debugInfo) {
 			DrawText(TextFormat("HP: %d", plr->hp), 15, 70, 20, RED);
