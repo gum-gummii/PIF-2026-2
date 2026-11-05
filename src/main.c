@@ -5,6 +5,7 @@
 #include <string.h>
 #include <math.h>
 #include <classes.h>
+#include <combat.h>
 #include <time.h>
 
 
@@ -266,7 +267,7 @@ int main() {
 
 	Spirit plrSpirit = {GetCenterOfScreen(), 8.5};
 	Character* plr = (Character*) malloc(sizeof(Character));
-	plr->hp = 100;
+	plr->hp = PLAYER_MAX_HP;
 	plr->movespeed = 17.5;
 	plr->spirit = plrSpirit;
 	plr->position = GetCenterOfScreen();
@@ -298,6 +299,8 @@ int main() {
 	Camera2D camera = {0};
 	camera.zoom = 1.0f;
 
+	CombatState combat;
+	Combat_Init(&combat);
 
 	while (!WindowShouldClose()) {
 		WaitTime(1.0 / 60.0);
@@ -329,6 +332,22 @@ int main() {
 
 			background = (scenario == 0 && gardenBackground.id != 0) ? &gardenBackground : NULL;
 			SetupWorld(&camera, plr, plrFrame, background);
+
+			// o demoninho mora nos cenarios 0 e 1
+			if (scenario == 0 || scenario == 1) {
+				Combat_SpawnEnemy(&combat, (Vector2){GetScreenWidth() * 0.7f, GetScreenHeight() / 2 - 24});
+			} else {
+				Combat_ClearEnemy(&combat);
+			}
+		}
+
+		// reinicia a luta
+		if (IsKeyPressed(KEY_R)) {
+			plr->hp = PLAYER_MAX_HP;
+			plr->position = GetCenterOfScreen();
+			if (scenario == 0 || scenario == 1) {
+				Combat_SpawnEnemy(&combat, (Vector2){GetScreenWidth() * 0.7f, GetScreenHeight() / 2 - 24});
+			}
 		}
 
 
@@ -343,7 +362,10 @@ int main() {
 			DrawBattleBackground(GetBattleSquareSize());
 			DrawRectangle(plrSpirit.position.x - (playerSpiritSize / 2), plrSpirit.position.y - (playerSpiritSize / 2), playerSpiritSize, playerSpiritSize, RED);
 		} else {
-			bool hasMovement = MovePlr(plr, plrFrame, &plrCurrentFrame, Assets);
+			bool hasMovement = (plr->hp > 0) ? MovePlr(plr, plrFrame, &plrCurrentFrame, Assets) : false;
+
+				Rectangle plrBody = {plr->position.x, plr->position.y, plrFrame.width, plrFrame.height};
+				Combat_Update(&combat, 1.0f / 60.0f, plrBody, &plr->hp, worldSize, Assets, true);
 
 			if (hasMovement) {
 				plrFrameI++;
@@ -366,9 +388,12 @@ int main() {
 
 			BeginMode2D(camera);
 			DrawWorld(background, Assets, debugInfo);
-			DrawTextureRec(Assets->plrTexture, (Rectangle){plrFrame.width * plrCurrentFrame.x, plrFrame.height * plrCurrentFrame.y, plrFrame.width, plrFrame.height}, plr->position, WHITE);
+			DrawTextureRec(Assets->plrTexture, (Rectangle){plrFrame.width * plrCurrentFrame.x, plrFrame.height * plrCurrentFrame.y, plrFrame.width, plrFrame.height}, plr->position, Combat_PlayerBlink(&combat) ? Fade(WHITE, 0.35f) : WHITE);
+				Combat_Draw(&combat);
 			EndMode2D();
 		}
+
+		Combat_DrawHud(&combat, plr->hp);
 
 		DrawText("Press [P] to show/hide debug info!", 15, 20, 30, WHITE);
 		if (debugInfo) {
