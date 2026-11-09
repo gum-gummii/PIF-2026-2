@@ -34,6 +34,12 @@ typedef struct LoadedAssetsClass {
 	void (*DrawHitboxes)(struct LoadedAssetsClass*);
 
 	LoadedTexture* textureHead;
+	void (*NewTexture)(struct LoadedAssetsClass*, char*, Texture);
+	LoadedTexture* (*GetLastTexture)(struct LoadedTexture*);
+	void (*RemoveTexture)(struct LoadedAssetsClass*, LoadedTexture*);
+	LoadedTexture* (*FindTextureByName)(struct LoadedAssetsClass*, char*);
+	void (*FreeTextures)(struct LoadedAssetsClass*);
+	int (*GetTextureAmount)(struct LoadedAssetsClass*);
 
 	LoadedImage* imageHead;
 	void (*NewImage)(struct LoadedAssetsClass*, char*, Image);
@@ -43,8 +49,6 @@ typedef struct LoadedAssetsClass {
 	void (*FreeImages)(struct LoadedAssetsClass*);
 	int (*GetImageAmount)(struct LoadedAssetsClass*);
 	void (*UnloadImages)(struct LoadedAssetsClass*);
-
-	Texture plrTexture;
 } LoadedAssetsClass;
 
 
@@ -108,18 +112,6 @@ Hitbox* ____findhitboxfunction(LoadedAssetsClass* self, char* hitboxName) {
 	return NULL;
 }
 void __freeHitboxes(LoadedAssetsClass* self) {
-	//if (self->hitboxHead != NULL) {
-	//	Hitbox* current = self->hitboxHead;
-	//	Hitbox* next = self->hitboxHead->next;
-	//	free(current);
-	//
-	//	while (next != NULL) {
-	//		current = next;
-	//		next = current;
-	//		free(current);
-	//	}
-	//}
-
 	if (self->hitboxHead != NULL) {
 		free(self->hitboxHead);
 		self->hitboxHead = NULL;
@@ -198,6 +190,93 @@ void __drawHitbox(LoadedAssetsClass* self) {
 	}
 }
 
+
+void __newTexture(LoadedAssetsClass* self, char* textureName, Texture texture) {
+	if (texture.id == 0) {
+		TraceLog(LOG_ERROR, TextFormat("Failed to load %s (is the resources folder reachable?)", textureName));
+		return;
+	}
+
+	LoadedTexture* node = (LoadedTexture*) malloc(sizeof(LoadedTexture));
+	node->name = textureName;
+	node->texture = texture;
+	node->next = NULL;
+	
+	if (self->textureHead == NULL) {
+		self->textureHead = node;
+	} else {
+		LoadedTexture* previousNode =self->textureHead;
+		while (previousNode->next != NULL) { previousNode = previousNode->next; }
+		previousNode->next = node;
+	}	
+}
+Hitbox* __getLastTexture(LoadedAssetsClass* self) {
+	if (self->textureHead != NULL) {
+		Hitbox* lastNode = self->textureHead;
+
+		while (lastNode->next != NULL) {
+			lastNode = lastNode->next;
+		}
+
+		return lastNode;
+	}
+
+	return NULL;
+}
+void __removeTextureByPtr(LoadedAssetsClass* self, LoadedTexture* ptrTexture) {
+	if (ptrTexture == NULL) { return; }
+
+	if (self->textureHead == ptrTexture) {
+		self->textureHead = (self->textureHead->next != NULL) ? self->textureHead->next : NULL;
+		free(ptrTexture);
+	} else {
+		LoadedTexture* previousNode = self->textureHead;
+		while (previousNode->next != ptrTexture) {
+			previousNode = previousNode->next;
+		}
+
+		previousNode->next = (previousNode->next->next != NULL) ? previousNode->next->next : NULL;
+		free(ptrTexture);
+	}
+}
+Hitbox* __findTexture(LoadedAssetsClass* self, char* textureName) {
+	if (self->textureHead != NULL) {
+		Hitbox* node = self->textureHead;
+
+		while ((node->next != NULL) || (strcmp(node->name, textureName) != 0)) {
+			node = node->next;
+		}
+
+		if (strcmp(node->name, textureName) != 0) {
+			return node;
+		} else {
+			return NULL;
+		}
+	}
+
+	return NULL;
+}
+void __freeTextures(LoadedAssetsClass* self) {
+	if (self->textureHead != NULL) {
+		free(self->textureHead);
+		self->textureHead = NULL;
+	}
+}
+int __getTextureAmount(LoadedAssetsClass* self) {
+	int amt = 0;
+
+	if (self->textureHead != NULL) {
+		Hitbox* previousNode = self->textureHead;
+		amt++;
+
+		while (previousNode->next != NULL) {
+			amt++;
+			previousNode = previousNode->next;
+		}
+	}
+
+	return amt;
+}
 
 
 void __newImage(LoadedAssetsClass* self, char* imageName, Image image) {
@@ -308,6 +387,12 @@ LoadedAssetsClass* InitLoadedAssets() {
 	assets->DrawHitboxes = __drawHitbox;
 
 	assets->textureHead = NULL;
+	assets->NewTexture = __newTexture;
+	assets->GetLastTexture = __getLastTexture;
+	assets->RemoveTexture = __removeTextureByPtr;
+	assets->FindTextureByName = __findTexture;
+	assets->FreeTextures = __freeTextures;
+	assets->GetTextureAmount = __getTextureAmount;
 
 	assets->imageHead = NULL;
 	assets->NewImage = __newImage;
@@ -374,4 +459,94 @@ void __removeLineBulletByPtr(BulletClass* self, LineBulletNode* ptrBullet) {
 		previousNode->next = (previousNode->next->next != NULL) ? previousNode->next->next : NULL;
 		free(ptrBullet);
 	}
+}
+
+
+
+
+
+
+
+
+
+typedef struct {
+	Vector2 position;
+	float movespeed;
+} Spirit;
+
+typedef struct {
+	Vector2 position;
+	Texture texture;
+	float movespeed;
+	int hp;
+	int maxHp;
+	Rectangle animFrame;
+	int animTick;
+} Character;
+
+typedef struct GameDataClass{
+	Character* mainCharacter;
+	Character* sideCharacter_1;
+	Character* sideCharacter_2;
+	Spirit* spirit;
+
+	bool debugMode;
+	bool spiritMode;
+
+	Character* (*NewCharacter)(struct GameDataClass* self, Vector2 pos, float speed, int hp, Texture texture, Vector2 animFrameDivisions);
+	void (*UnloadCharacter)(struct GameDataClass* self, Character* character);
+} GameDataClass;
+
+
+
+Character* __newCharacter(GameDataClass* self, Vector2 pos, float speed, int hp, Texture texture, Vector2 animFrameDivisions) {
+	if (texture.id == 0) {
+		TraceLog(LOG_ERROR, "Failed to load character texture (is the resources folder reachable?)");
+		free(self);
+		CloseWindow();
+		return 1;
+	}
+
+	Character* character = (Character*) malloc(sizeof(Character));
+	character->position = pos;
+	character->movespeed = speed;
+	character->hp = hp;
+	character->maxHp = hp;
+	character->texture = texture;
+	character->animFrame = (Rectangle){0, 0, character->texture.width / animFrameDivisions.x, character->texture.height / animFrameDivisions.y};
+
+	return character;
+}
+void __unloadCharacter(GameDataClass* self, Character* character) {
+	if (character != NULL) {
+		UnloadTexture(character->texture);
+		free(character);
+	}
+}
+
+
+
+GameDataClass* InitGameData() {
+	GameDataClass* GameData = (GameDataClass*) malloc(sizeof(GameDataClass));
+
+	GameData->mainCharacter = NULL;
+	GameData->sideCharacter_1 = NULL;
+	GameData->sideCharacter_2 = NULL;
+
+	GameData->spirit = (Spirit*) malloc(sizeof(Spirit));
+	if (GameData->spirit == NULL) {
+		free(GameData);
+		return NULL;
+	}
+	GameData->spirit->position = (Vector2){GetScreenWidth()/2, GetScreenHeight()/2};
+	GameData->spirit->movespeed = 8.5;
+
+	GameData->debugMode = false;
+	GameData->spiritMode = false;
+
+
+	GameData->NewCharacter = __newCharacter;
+	GameData->UnloadCharacter = __unloadCharacter;
+
+	return GameData;
 }

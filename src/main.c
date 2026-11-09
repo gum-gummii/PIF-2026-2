@@ -10,17 +10,7 @@
 
 
 
-typedef struct {
-	Vector2 position;
-	float movespeed;
-} Spirit;
 
-typedef struct {
-	Vector2 position;
-	float movespeed;
-	int hp;
-	Spirit spirit;
-} Character;
 
 
 
@@ -258,6 +248,30 @@ void DrawGameScenarios(int scenarioIndex, LoadedAssetsClass* Assets) {
 	}
 }
 
+void GetAnimatedCharVector(Rectangle* animFrame, int* ticksToNextFrame, int ticksPerFrame, int currentMaxX, int nextTextureY) {
+	if (animFrame->y != 0) {
+		(*ticksToNextFrame)++;
+
+		if ((*ticksToNextFrame) >= ticksPerFrame) {
+			(*ticksToNextFrame) = 0;
+			animFrame->x++;
+
+			if (animFrame->x >= currentMaxX) {
+				animFrame->x = 0;
+			}
+		}
+	}
+
+	if (animFrame->y != nextTextureY) {
+		if (animFrame->y == 0) {
+			ticksToNextFrame = 0;
+			animFrame->x = animFrame->y - 1;
+		}
+
+		animFrame->y = nextTextureY;
+	}
+}
+
 
 
 int main() {
@@ -265,26 +279,13 @@ int main() {
 	InitWindow(1280, 720, "ALTERNUDE");
 	SearchAndSetResourceDir("resources");
 
-	Spirit plrSpirit = {GetCenterOfScreen(), 8.5};
-	Character* plr = (Character*) malloc(sizeof(Character));
-	plr->hp = PLAYER_MAX_HP;
-	plr->movespeed = 17.5;
-	plr->spirit = plrSpirit;
-	plr->position = GetCenterOfScreen();
+	GameDataClass* GameData = InitGameData();
+	int plrFrameAmount = 4;
+	int plrAnimsAmount = 5;
+	GameData->mainCharacter = GameData->NewCharacter(GameData, GetCenterOfScreen(), 17.5, 100, LoadTexture("playr.png"), (Vector2){plrFrameAmount, plrAnimsAmount});
 
 	LoadedAssetsClass* Assets = InitLoadedAssets();
-	Assets->plrTexture = LoadTexture("playr.png");
-	if (Assets->plrTexture.id == 0) {
-		TraceLog(LOG_ERROR, "Failed to load playr.png (is the resources folder reachable?)");
-		free(plr);
-		free(Assets);
-		CloseWindow();
-		return 1;
-	}
-
-	bool spiritMode = false;
 	bool isMoving = false;
-	bool debugInfo = false;
 
 	int lastScenario = -1;
 	int scenario = 0;
@@ -299,8 +300,8 @@ int main() {
 	Camera2D camera = {0};
 	camera.zoom = 1.0f;
 
-	CombatState combat;
-	Combat_Init(&combat);
+	//CombatState combat;
+	//Combat_Init(&combat);
 
 	while (!WindowShouldClose()) {
 		WaitTime(1.0 / 60.0);
@@ -334,11 +335,11 @@ int main() {
 			SetupWorld(&camera, plr, plrFrame, background);
 
 			// o demoninho mora nos cenarios 0 e 1
-			if (scenario == 0 || scenario == 1) {
-				Combat_SpawnEnemy(&combat, (Vector2){GetScreenWidth() * 0.7f, GetScreenHeight() / 2 - 24});
-			} else {
-				Combat_ClearEnemy(&combat);
-			}
+			//if (scenario == 0 || scenario == 1) {
+			//	Combat_SpawnEnemy(&combat, (Vector2){GetScreenWidth() * 0.7f, GetScreenHeight() / 2 - 24});
+			//} else {
+			//	Combat_ClearEnemy(&combat);
+			//}
 		}
 
 		// reinicia a luta
@@ -367,20 +368,22 @@ int main() {
 				Rectangle plrBody = {plr->position.x, plr->position.y, plrFrame.width, plrFrame.height};
 				Combat_Update(&combat, 1.0f / 60.0f, plrBody, &plr->hp, worldSize, Assets, true);
 
-			if (hasMovement) {
-				plrFrameI++;
-				if (plrFrameI >= plrFrameSpeed) {
-					plrFrameI = 0;
-					plrCurrentFrame.x++;
-					if (plrCurrentFrame.x >= plrFrameAmount) {
-						plrCurrentFrame.x = 0;
-					}
-				}
-			} else if (isMoving != hasMovement) {
-				plrFrameI = 0;
-				plrCurrentFrame.x = plrCurrentFrame.y - 1;
-				plrCurrentFrame.y = 0;
-			}
+			//if (hasMovement) {
+			//	plrFrameI++;
+			//	if (plrFrameI >= plrFrameSpeed) {
+			//		plrFrameI = 0;
+			//		plrCurrentFrame.x++;
+			//		if (plrCurrentFrame.x >= plrFrameAmount) {
+			//			plrCurrentFrame.x = 0;
+			//		}
+			//	}
+			//} else if (isMoving != hasMovement) {
+			//	plrFrameI = 0;
+			//	plrCurrentFrame.x = plrCurrentFrame.y - 1;
+			//	plrCurrentFrame.y = 0;
+			//}
+
+			//GetAnimatedCharVector(&plrFrame, &plrFrameI, plrFrameSpeed, plrFrameAmount, plrCurrentFrame.y);
 
 			isMoving = hasMovement;
 
