@@ -6,6 +6,8 @@
 #include <math.h>
 #include <classes.h>
 #include <combat.h>
+#include <battle.h>
+#include <encounter.h>
 #include <time.h>
 
 
@@ -261,6 +263,11 @@ void DrawGameScenarios(int scenarioIndex, LoadedAssetsClass* Assets) {
 
 
 
+void StartFightIntro(Encounter* enc, Camera2D* camera, Character* plr, Rectangle plrFrame) {
+	Vector2 plrCenter = {plr->position.x + plrFrame.width / 2, plr->position.y + plrFrame.height / 2};
+	Encounter_Start(enc, GetWorldToScreen2D(plrCenter, *camera), "DEMONINHO");
+}
+
 int main() {
 	SetConfigFlags(FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI);
 	InitWindow(1280, 720, "ALTERNUDE");
@@ -300,8 +307,9 @@ int main() {
 	Camera2D camera = {0};
 	camera.zoom = 1.0f;
 
-	CombatState combat;
-	Combat_Init(&combat);
+	Battle battle = {0};
+	Encounter encounter = {0};
+	Rectangle battlePlrSrc = {plrFrame.width * 3, 0, plrFrame.width, plrFrame.height};
 
 	while (!WindowShouldClose()) {
 		WaitTime(1.0 / 60.0);
@@ -314,7 +322,12 @@ int main() {
 		if (IsKeyPressed(KEY_Q)) { scenario -= 1; }
 		if (IsKeyPressed(KEY_E)) { scenario += 1; printf("NEXT"); }
 
-		if (IsKeyPressed(KEY_SPACE)) {
+		Encounter_Update(&encounter, 1.0f / 60.0f);
+		bool inIntro = Encounter_IsActive(&encounter);
+		bool inBattle = Battle_IsActive(&battle) && !inIntro;
+		if (inBattle) { Battle_Update(&battle, 1.0f / 60.0f, &plr->hp); }
+
+		if (IsKeyPressed(KEY_SPACE) && !inIntro && !inBattle) {
 			spiritMode = !spiritMode;
 
 			if (spiritMode) {
@@ -336,24 +349,28 @@ int main() {
 
 			// o demoninho mora nos cenarios 0 e 1
 			if (scenario == 0 || scenario == 1) {
-				Combat_SpawnEnemy(&combat, (Vector2){GetScreenWidth() * 0.7f, GetScreenHeight() / 2 - 24});
+				Battle_Start(&battle, Assets->plrTexture, battlePlrSrc);
+				StartFightIntro(&encounter, &camera, plr, plrFrame);
 			} else {
-				Combat_ClearEnemy(&combat);
+				Battle_Stop(&battle);
 			}
 		}
 
 		// reinicia a luta
-		if (IsKeyPressed(KEY_R)) {
+		if (IsKeyPressed(KEY_R) || Battle_ConsumeRestart(&battle)) {
 			plr->hp = PLAYER_MAX_HP;
 			plr->position = GetCenterOfScreen();
 			if (scenario == 0 || scenario == 1) {
-				Combat_SpawnEnemy(&combat, (Vector2){GetScreenWidth() * 0.7f, GetScreenHeight() / 2 - 24});
+				Battle_Start(&battle, Assets->plrTexture, battlePlrSrc);
+				StartFightIntro(&encounter, &camera, plr, plrFrame);
 			}
 		}
 
 
 
-		if (spiritMode) {
+		if (inBattle) {
+			Battle_Draw(&battle, plr->hp);
+		} else if (spiritMode) {
 			BeginMode2D(camera);
 			DrawWorld(background, Assets, debugInfo);
 			EndMode2D();
@@ -363,10 +380,7 @@ int main() {
 			DrawBattleBackground(GetBattleSquareSize());
 			DrawRectangle(plrSpirit.position.x - (playerSpiritSize / 2), plrSpirit.position.y - (playerSpiritSize / 2), playerSpiritSize, playerSpiritSize, RED);
 		} else {
-			bool hasMovement = (plr->hp > 0) ? MovePlr(plr, plrFrame, &plrCurrentFrame, Assets) : false;
-
-				Rectangle plrBody = {plr->position.x, plr->position.y, plrFrame.width, plrFrame.height};
-				Combat_Update(&combat, 1.0f / 60.0f, plrBody, &plr->hp, worldSize, Assets, true);
+			bool hasMovement = (plr->hp > 0 && !inIntro) ? MovePlr(plr, plrFrame, &plrCurrentFrame, Assets) : false;
 
 			if (hasMovement) {
 				plrFrameI++;
@@ -389,12 +403,11 @@ int main() {
 
 			BeginMode2D(camera);
 			DrawWorld(background, Assets, debugInfo);
-			DrawTextureRec(Assets->plrTexture, (Rectangle){plrFrame.width * plrCurrentFrame.x, plrFrame.height * plrCurrentFrame.y, plrFrame.width, plrFrame.height}, plr->position, Combat_PlayerBlink(&combat) ? Fade(WHITE, 0.35f) : WHITE);
-				Combat_Draw(&combat);
+			DrawTextureRec(Assets->plrTexture, (Rectangle){plrFrame.width * plrCurrentFrame.x, plrFrame.height * plrCurrentFrame.y, plrFrame.width, plrFrame.height}, plr->position, WHITE);
 			EndMode2D();
 		}
 
-		Combat_DrawHud(&combat, plr->hp);
+		if (inIntro) { Encounter_Draw(&encounter); }
 
 		DrawText("Press [P] to show/hide debug info!", 15, 20, 30, WHITE);
 		if (debugInfo) {
