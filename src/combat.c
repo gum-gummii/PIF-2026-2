@@ -387,14 +387,12 @@ void Combat_DrawHud(CombatState* c, int plrHp) {
 	int sw = GetScreenWidth(), sh = GetScreenHeight();
 
 	// vida do jogador
-	DrawBar((Vector2){20, sh-50}, (Vector2){260, 22}, plrHp/PLAYER_MAX_HP, plrHp > 30 ? GREEN : ORANGE, TextFormat("HP %d/%d", plrHp < 0 ? 0 : plrHp, PLAYER_MAX_HP));
-	DrawBar(20, sh - 50, 260, 22, (float)plrHp / PLAYER_MAX_HP, plrHp > 30 ? GREEN : ORANGE);
-	DrawText(TextFormat("HP %d/%d", plrHp < 0 ? 0 : plrHp, PLAYER_MAX_HP), 28, sh - 48, 18, WHITE);
+	DrawBar((Vector2){20, sh-50}, (Vector2){260, 22}, (float)plrHp / PLAYER_MAX_HP, plrHp > 30 ? GREEN : ORANGE, TextFormat("HP %d/%d", plrHp < 0 ? 0 : plrHp, PLAYER_MAX_HP));
 
 	// vida do inimigo
 	if (e->present) {
 		float w = 420;
-		DrawBar(sw / 2 - w / 2, 20, w, 20, (float)e->hp / e->maxHp, RED);
+		DrawBar((Vector2){sw / 2 - w / 2, 20}, (Vector2){w, 20}, (float)e->hp / e->maxHp, RED, "");
 		DrawText("DEMONINHO", sw / 2 - MeasureText("DEMONINHO", 18) / 2, 44, 18, WHITE);
 	}
 

@@ -6,6 +6,8 @@
 #include <math.h>
 #include <classes.h>
 #include <combat.h>
+#include <battle.h>
+#include <encounter.h>
 #include <time.h>
 
 
@@ -274,6 +276,11 @@ void GetAnimatedCharVector(Rectangle* animFrame, int* ticksToNextFrame, int tick
 
 
 
+void StartFightIntro(Encounter* enc, Camera2D* camera, Character* plr, Rectangle plrFrame) {
+	Vector2 plrCenter = {plr->position.x + plrFrame.width / 2, plr->position.y + plrFrame.height / 2};
+	Encounter_Start(enc, GetWorldToScreen2D(plrCenter, *camera), "DEMONINHO");
+}
+
 int main() {
 	SetConfigFlags(FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI);
 	InitWindow(1280, 720, "ALTERNUDE");
@@ -282,7 +289,10 @@ int main() {
 	GameDataClass* GameData = InitGameData();
 	int plrFrameAmount = 4;
 	int plrAnimsAmount = 5;
-	GameData->mainCharacter = GameData->NewCharacter(GameData, GetCenterOfScreen(), 17.5, 100, LoadTexture("playr.png"), (Vector2){plrFrameAmount, plrAnimsAmount});
+	GameData->mainCharacter = GameData->NewCharacter(GameData, GetCenterOfScreen(), 17.5, PLAYER_MAX_HP, LoadTexture("playr.png"), (Vector2){plrFrameAmount, plrAnimsAmount});
+	Character* plr = GameData->mainCharacter;
+	if (plr == NULL) { return 1; }
+	Spirit* plrSpirit = GameData->spirit;
 
 	LoadedAssetsClass* Assets = InitLoadedAssets();
 	bool isMoving = false;
@@ -291,36 +301,41 @@ int main() {
 	int scenario = 0;
 	int plrFrameI = 0;
 	Vector2 plrCurrentFrame = {0, 0};
-	int plrFrameAmount = 4;
 	int plrFrameSpeed = 3;
-	Rectangle plrFrame = {0, 0, Assets->plrTexture.width / plrFrameAmount, Assets->plrTexture.height / 5};
+	Rectangle plrFrame = plr->animFrame;
 
 	Texture2D gardenBackground = LoadTexture("kardkassino_garden.png");
 	Texture2D* background = NULL;
 	Camera2D camera = {0};
 	camera.zoom = 1.0f;
 
-	//CombatState combat;
-	//Combat_Init(&combat);
+	Battle battle = {0};
+	Encounter encounter = {0};
+	Rectangle battlePlrSrc = {plrFrame.width * 3, 0, plrFrame.width, plrFrame.height};
 
 	while (!WindowShouldClose()) {
 		WaitTime(1.0 / 60.0);
 		clockTimestampMs += (1.0 / 60.0);
 
 		if (IsKeyPressed(KEY_P)) {
-			debugInfo = !debugInfo;
+			GameData->debugMode = !GameData->debugMode;
 		}
 
 		if (IsKeyPressed(KEY_Q)) { scenario -= 1; }
 		if (IsKeyPressed(KEY_E)) { scenario += 1; printf("NEXT"); }
 
-		if (IsKeyPressed(KEY_SPACE)) {
-			spiritMode = !spiritMode;
+		Encounter_Update(&encounter, 1.0f / 60.0f);
+		bool inIntro = Encounter_IsActive(&encounter);
+		bool inBattle = Battle_IsActive(&battle) && !inIntro;
+		if (inBattle) { Battle_Update(&battle, 1.0f / 60.0f, &plr->hp); }
 
-			if (spiritMode) {
+		if (IsKeyPressed(KEY_SPACE) && !inIntro && !inBattle) {
+			GameData->spiritMode = !GameData->spiritMode;
+
+			if (GameData->spiritMode) {
 				Vector2 center = GetCenterOfScreen();
-				plrSpirit.position.x = center.x;
-				plrSpirit.position.y = center.y;
+				plrSpirit->position.x = center.x;
+				plrSpirit->position.y = center.y;
 			}
 		}
 
@@ -335,88 +350,86 @@ int main() {
 			SetupWorld(&camera, plr, plrFrame, background);
 
 			// o demoninho mora nos cenarios 0 e 1
-			//if (scenario == 0 || scenario == 1) {
-			//	Combat_SpawnEnemy(&combat, (Vector2){GetScreenWidth() * 0.7f, GetScreenHeight() / 2 - 24});
-			//} else {
-			//	Combat_ClearEnemy(&combat);
-			//}
+			if (scenario == 0 || scenario == 1) {
+				Battle_Start(&battle, plr->texture, battlePlrSrc);
+				StartFightIntro(&encounter, &camera, plr, plrFrame);
+			} else {
+				Battle_Stop(&battle);
+			}
 		}
 
 		// reinicia a luta
-		if (IsKeyPressed(KEY_R)) {
+		if (IsKeyPressed(KEY_R) || Battle_ConsumeRestart(&battle)) {
 			plr->hp = PLAYER_MAX_HP;
 			plr->position = GetCenterOfScreen();
 			if (scenario == 0 || scenario == 1) {
-				Combat_SpawnEnemy(&combat, (Vector2){GetScreenWidth() * 0.7f, GetScreenHeight() / 2 - 24});
+				Battle_Start(&battle, plr->texture, battlePlrSrc);
+				StartFightIntro(&encounter, &camera, plr, plrFrame);
 			}
 		}
 
 
 
-		if (spiritMode) {
+		if (inBattle) {
+			Battle_Draw(&battle, plr->hp);
+		} else if (GameData->spiritMode) {
 			BeginMode2D(camera);
-			DrawWorld(background, Assets, debugInfo);
+			DrawWorld(background, Assets, GameData->debugMode);
 			EndMode2D();
 
-			MoveSpirit(&plrSpirit);
+			MoveSpirit(plrSpirit);
 
 			DrawBattleBackground(GetBattleSquareSize());
-			DrawRectangle(plrSpirit.position.x - (playerSpiritSize / 2), plrSpirit.position.y - (playerSpiritSize / 2), playerSpiritSize, playerSpiritSize, RED);
+			DrawRectangle(plrSpirit->position.x - (playerSpiritSize / 2), plrSpirit->position.y - (playerSpiritSize / 2), playerSpiritSize, playerSpiritSize, RED);
 		} else {
-			bool hasMovement = (plr->hp > 0) ? MovePlr(plr, plrFrame, &plrCurrentFrame, Assets) : false;
+			bool hasMovement = (plr->hp > 0 && !inIntro) ? MovePlr(plr, plrFrame, &plrCurrentFrame, Assets) : false;
 
-				Rectangle plrBody = {plr->position.x, plr->position.y, plrFrame.width, plrFrame.height};
-				Combat_Update(&combat, 1.0f / 60.0f, plrBody, &plr->hp, worldSize, Assets, true);
-
-			//if (hasMovement) {
-			//	plrFrameI++;
-			//	if (plrFrameI >= plrFrameSpeed) {
-			//		plrFrameI = 0;
-			//		plrCurrentFrame.x++;
-			//		if (plrCurrentFrame.x >= plrFrameAmount) {
-			//			plrCurrentFrame.x = 0;
-			//		}
-			//	}
-			//} else if (isMoving != hasMovement) {
-			//	plrFrameI = 0;
-			//	plrCurrentFrame.x = plrCurrentFrame.y - 1;
-			//	plrCurrentFrame.y = 0;
-			//}
-
-			//GetAnimatedCharVector(&plrFrame, &plrFrameI, plrFrameSpeed, plrFrameAmount, plrCurrentFrame.y);
+			if (hasMovement) {
+				plrFrameI++;
+				if (plrFrameI >= plrFrameSpeed) {
+					plrFrameI = 0;
+					plrCurrentFrame.x++;
+					if (plrCurrentFrame.x >= plrFrameAmount) {
+						plrCurrentFrame.x = 0;
+					}
+				}
+			} else if (isMoving != hasMovement) {
+				plrFrameI = 0;
+				plrCurrentFrame.x = plrCurrentFrame.y - 1;
+				plrCurrentFrame.y = 0;
+			}
 
 			isMoving = hasMovement;
 
 			FollowPlayerWithCamera(&camera, plr->position, plrFrame);
 
 			BeginMode2D(camera);
-			DrawWorld(background, Assets, debugInfo);
-			DrawTextureRec(Assets->plrTexture, (Rectangle){plrFrame.width * plrCurrentFrame.x, plrFrame.height * plrCurrentFrame.y, plrFrame.width, plrFrame.height}, plr->position, Combat_PlayerBlink(&combat) ? Fade(WHITE, 0.35f) : WHITE);
-				Combat_Draw(&combat);
+			DrawWorld(background, Assets, GameData->debugMode);
+			DrawTextureRec(plr->texture, (Rectangle){plrFrame.width * plrCurrentFrame.x, plrFrame.height * plrCurrentFrame.y, plrFrame.width, plrFrame.height}, plr->position, WHITE);
 			EndMode2D();
 		}
 
-		Combat_DrawHud(&combat, plr->hp);
+		if (inIntro) { Encounter_Draw(&encounter); }
 
 		DrawText("Press [P] to show/hide debug info!", 15, 20, 30, WHITE);
-		if (debugInfo) {
+		if (GameData->debugMode) {
 			DrawText(TextFormat("HP: %d", plr->hp), 15, 70, 20, RED);
 			DrawText(TextFormat("Loaded Hitboxes: %d", Assets->GetHitboxAmount(Assets)), 15, 90, 20, BLUE);
 			DrawText(TextFormat("Scenario: %d", scenario), 15, 110, 20, LIGHTGRAY);
 
-			char* spiritStateStr = (spiritMode == true) ? "ON" : "OFF";
+			char* spiritStateStr = (GameData->spiritMode == true) ? "ON" : "OFF";
 			DrawText(TextFormat("Spirit Mode: %s ([SPACE] to toggle!)", spiritStateStr), 15, 50, 20, LIGHTGRAY);
-			if (!spiritMode) { DrawText(TextFormat("Player Sprite State - (X:%.0f, Y:%.0f)", plrCurrentFrame.x, plrCurrentFrame.y), 15, GetScreenHeight() - 40, 20, LIGHTGRAY); }
+			if (!GameData->spiritMode) { DrawText(TextFormat("Player Sprite State - (X:%.0f, Y:%.0f)", plrCurrentFrame.x, plrCurrentFrame.y), 15, GetScreenHeight() - 40, 20, LIGHTGRAY); }
 		}
 		EndDrawing();
 	}
 
 	UnloadTexture(gardenBackground);
-	UnloadTexture(Assets->plrTexture);
+	GameData->UnloadCharacter(GameData, plr);
 	CloseWindow();
 
 	Assets->FreeHitboxes(Assets);
 	Assets->FreeImages(Assets);
 	if (Assets != NULL) { free(Assets); }
 	return 0;
-}	
+}

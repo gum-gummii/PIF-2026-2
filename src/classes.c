@@ -35,7 +35,7 @@ typedef struct LoadedAssetsClass {
 
 	LoadedTexture* textureHead;
 	void (*NewTexture)(struct LoadedAssetsClass*, char*, Texture);
-	LoadedTexture* (*GetLastTexture)(struct LoadedTexture*);
+	LoadedTexture* (*GetLastTexture)(struct LoadedAssetsClass*);
 	void (*RemoveTexture)(struct LoadedAssetsClass*, LoadedTexture*);
 	LoadedTexture* (*FindTextureByName)(struct LoadedAssetsClass*, char*);
 	void (*FreeTextures)(struct LoadedAssetsClass*);
@@ -210,9 +210,9 @@ void __newTexture(LoadedAssetsClass* self, char* textureName, Texture texture) {
 		previousNode->next = node;
 	}	
 }
-Hitbox* __getLastTexture(LoadedAssetsClass* self) {
+LoadedTexture* __getLastTexture(LoadedAssetsClass* self) {
 	if (self->textureHead != NULL) {
-		Hitbox* lastNode = self->textureHead;
+		LoadedTexture* lastNode = self->textureHead;
 
 		while (lastNode->next != NULL) {
 			lastNode = lastNode->next;
@@ -239,9 +239,9 @@ void __removeTextureByPtr(LoadedAssetsClass* self, LoadedTexture* ptrTexture) {
 		free(ptrTexture);
 	}
 }
-Hitbox* __findTexture(LoadedAssetsClass* self, char* textureName) {
+LoadedTexture* __findTexture(LoadedAssetsClass* self, char* textureName) {
 	if (self->textureHead != NULL) {
-		Hitbox* node = self->textureHead;
+		LoadedTexture* node = self->textureHead;
 
 		while ((node->next != NULL) || (strcmp(node->name, textureName) != 0)) {
 			node = node->next;
@@ -266,7 +266,7 @@ int __getTextureAmount(LoadedAssetsClass* self) {
 	int amt = 0;
 
 	if (self->textureHead != NULL) {
-		Hitbox* previousNode = self->textureHead;
+		LoadedTexture* previousNode = self->textureHead;
 		amt++;
 
 		while (previousNode->next != NULL) {
@@ -439,6 +439,8 @@ LineBulletNode* __newLineBullet(BulletClass* self, Color color, Vector2 posStart
 		while (previousNode->next != NULL) { previousNode = previousNode->next; }
 		previousNode->next = node;
 	}
+
+	return node;
 }
 void __freeBullets(BulletClass* self) {
 	if (self->lineBulletsHead != NULL) {
@@ -504,7 +506,7 @@ Character* __newCharacter(GameDataClass* self, Vector2 pos, float speed, int hp,
 		TraceLog(LOG_ERROR, "Failed to load character texture (is the resources folder reachable?)");
 		free(self);
 		CloseWindow();
-		return 1;
+		return NULL;
 	}
 
 	Character* character = (Character*) malloc(sizeof(Character));

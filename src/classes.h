@@ -34,7 +34,7 @@ typedef struct LoadedAssetsClass {
 
 	LoadedTexture* textureHead;
 	void (*NewTexture)(struct LoadedAssetsClass*, char*, Texture);
-	LoadedTexture* (*GetLastTexture)(struct LoadedTexture*);
+	LoadedTexture* (*GetLastTexture)(struct LoadedAssetsClass*);
 	void (*RemoveTexture)(struct LoadedAssetsClass*, LoadedTexture*);
 	LoadedTexture* (*FindTextureByName)(struct LoadedAssetsClass*, char*);
 	void (*FreeTextures)(struct LoadedAssetsClass*);
