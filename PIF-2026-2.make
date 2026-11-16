@@ -119,8 +119,10 @@ GENERATED :=
 OBJECTS :=
 
 GENERATED += $(OBJDIR)/classes.o
+GENERATED += $(OBJDIR)/combat.o
 GENERATED += $(OBJDIR)/main.o
 OBJECTS += $(OBJDIR)/classes.o
+OBJECTS += $(OBJDIR)/combat.o
 OBJECTS += $(OBJDIR)/main.o
 
 # Rules
@@ -186,6 +188,9 @@ endif
 # #############################################
 
 $(OBJDIR)/classes.o: src/classes.c
+	@echo "$(notdir $<)"
+	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
+$(OBJDIR)/combat.o: src/combat.c
 	@echo "$(notdir $<)"
 	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 $(OBJDIR)/main.o: src/main.c

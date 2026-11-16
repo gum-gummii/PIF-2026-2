@@ -375,11 +375,11 @@ void Combat_Draw(CombatState* c) {
 	}
 }
 
-static void DrawBar(float x, float y, float w, float h, float ratio, Color fill) {
-	ratio = fminf(fmaxf(ratio, 0), 1);
-	DrawRectangle((int)x - 3, (int)y - 3, (int)w + 6, (int)h + 6, BLACK);
-	DrawRectangle((int)x, (int)y, (int)w, (int)h, (Color){60, 60, 60, 255});
-	DrawRectangle((int)x, (int)y, (int)(w * ratio), (int)h, fill);
+static void DrawBar(Vector2 pos, Vector2 size, float alpha, Color color, char *text) {
+	DrawRectangle(pos.x-3, pos.y-3, size.x+6, size.y+6, BLACK);
+	DrawRectangleV(pos, size, (Color){60, 60, 60, 255});
+	DrawRectangleV(pos, (Vector2){size.x * alpha, size.y}, color);
+	DrawText(text, pos.x+8, pos.y+4, size.y-4, WHITE);
 }
 
 void Combat_DrawHud(CombatState* c, int plrHp) {
@@ -387,13 +387,12 @@ void Combat_DrawHud(CombatState* c, int plrHp) {
 	int sw = GetScreenWidth(), sh = GetScreenHeight();
 
 	// vida do jogador
-	DrawBar(20, sh - 50, 260, 22, (float)plrHp / PLAYER_MAX_HP, plrHp > 30 ? GREEN : ORANGE);
-	DrawText(TextFormat("HP %d/%d", plrHp < 0 ? 0 : plrHp, PLAYER_MAX_HP), 28, sh - 48, 18, WHITE);
+	DrawBar((Vector2){20, sh-50}, (Vector2){260, 22}, (float)plrHp / PLAYER_MAX_HP, plrHp > 30 ? GREEN : ORANGE, TextFormat("HP %d/%d", plrHp < 0 ? 0 : plrHp, PLAYER_MAX_HP));
 
 	// vida do inimigo
 	if (e->present) {
 		float w = 420;
-		DrawBar(sw / 2 - w / 2, 20, w, 20, (float)e->hp / e->maxHp, RED);
+		DrawBar((Vector2){sw / 2 - w / 2, 20}, (Vector2){w, 20}, (float)e->hp / e->maxHp, RED, "");
 		DrawText("DEMONINHO", sw / 2 - MeasureText("DEMONINHO", 18) / 2, 44, 18, WHITE);
 	}
 

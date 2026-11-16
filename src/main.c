@@ -12,17 +12,7 @@
 
 
 
-typedef struct {
-	Vector2 position;
-	float movespeed;
-} Spirit;
 
-typedef struct {
-	Vector2 position;
-	float movespeed;
-	int hp;
-	Spirit spirit;
-} Character;
 
 
 
@@ -150,7 +140,6 @@ bool MovePlr(Character* plr, Rectangle plrTextureRect, Vector2* plrCurrentFrame,
 		}
 	}
 
-
 	//printf("time: %d\ndb: %d\n", sec, dmgDebounce);
 	if (dmgDebounce - clockTimestampMs <= 0 && moved) {
 		float dmg = Assets->CheckDamageColisions(Assets, futurePos);
@@ -261,6 +250,30 @@ void DrawGameScenarios(int scenarioIndex, LoadedAssetsClass* Assets) {
 	}
 }
 
+void GetAnimatedCharVector(Rectangle* animFrame, int* ticksToNextFrame, int ticksPerFrame, int currentMaxX, int nextTextureY) {
+	if (animFrame->y != 0) {
+		(*ticksToNextFrame)++;
+
+		if ((*ticksToNextFrame) >= ticksPerFrame) {
+			(*ticksToNextFrame) = 0;
+			animFrame->x++;
+
+			if (animFrame->x >= currentMaxX) {
+				animFrame->x = 0;
+			}
+		}
+	}
+
+	if (animFrame->y != nextTextureY) {
+		if (animFrame->y == 0) {
+			ticksToNextFrame = 0;
+			animFrame->x = animFrame->y - 1;
+		}
+
+		animFrame->y = nextTextureY;
+	}
+}
+
 
 
 void StartFightIntro(Encounter* enc, Camera2D* camera, Character* plr, Rectangle plrFrame) {
@@ -273,34 +286,23 @@ int main() {
 	InitWindow(1280, 720, "ALTERNUDE");
 	SearchAndSetResourceDir("resources");
 
-	Spirit plrSpirit = {GetCenterOfScreen(), 8.5};
-	Character* plr = (Character*) malloc(sizeof(Character));
-	plr->hp = PLAYER_MAX_HP;
-	plr->movespeed = 17.5;
-	plr->spirit = plrSpirit;
-	plr->position = GetCenterOfScreen();
+	GameDataClass* GameData = InitGameData();
+	int plrFrameAmount = 4;
+	int plrAnimsAmount = 5;
+	GameData->mainCharacter = GameData->NewCharacter(GameData, GetCenterOfScreen(), 17.5, PLAYER_MAX_HP, LoadTexture("playr.png"), (Vector2){plrFrameAmount, plrAnimsAmount});
+	Character* plr = GameData->mainCharacter;
+	if (plr == NULL) { return 1; }
+	Spirit* plrSpirit = GameData->spirit;
 
 	LoadedAssetsClass* Assets = InitLoadedAssets();
-	Assets->plrTexture = LoadTexture("playr.png");
-	if (Assets->plrTexture.id == 0) {
-		TraceLog(LOG_ERROR, "Failed to load playr.png (is the resources folder reachable?)");
-		free(plr);
-		free(Assets);
-		CloseWindow();
-		return 1;
-	}
-
-	bool spiritMode = false;
 	bool isMoving = false;
-	bool debugInfo = false;
 
 	int lastScenario = -1;
 	int scenario = 0;
 	int plrFrameI = 0;
 	Vector2 plrCurrentFrame = {0, 0};
-	int plrFrameAmount = 4;
 	int plrFrameSpeed = 3;
-	Rectangle plrFrame = {0, 0, Assets->plrTexture.width / plrFrameAmount, Assets->plrTexture.height / 5};
+	Rectangle plrFrame = plr->animFrame;
 
 	Texture2D gardenBackground = LoadTexture("kardkassino_garden.png");
 	Texture2D* background = NULL;
@@ -316,7 +318,7 @@ int main() {
 		clockTimestampMs += (1.0 / 60.0);
 
 		if (IsKeyPressed(KEY_P)) {
-			debugInfo = !debugInfo;
+			GameData->debugMode = !GameData->debugMode;
 		}
 
 		if (IsKeyPressed(KEY_Q)) { scenario -= 1; }
@@ -328,12 +330,12 @@ int main() {
 		if (inBattle) { Battle_Update(&battle, 1.0f / 60.0f, &plr->hp); }
 
 		if (IsKeyPressed(KEY_SPACE) && !inIntro && !inBattle) {
-			spiritMode = !spiritMode;
+			GameData->spiritMode = !GameData->spiritMode;
 
-			if (spiritMode) {
+			if (GameData->spiritMode) {
 				Vector2 center = GetCenterOfScreen();
-				plrSpirit.position.x = center.x;
-				plrSpirit.position.y = center.y;
+				plrSpirit->position.x = center.x;
+				plrSpirit->position.y = center.y;
 			}
 		}
 
@@ -349,7 +351,7 @@ int main() {
 
 			// o demoninho mora nos cenarios 0 e 1
 			if (scenario == 0 || scenario == 1) {
-				Battle_Start(&battle, Assets->plrTexture, battlePlrSrc);
+				Battle_Start(&battle, plr->texture, battlePlrSrc);
 				StartFightIntro(&encounter, &camera, plr, plrFrame);
 			} else {
 				Battle_Stop(&battle);
@@ -361,7 +363,7 @@ int main() {
 			plr->hp = PLAYER_MAX_HP;
 			plr->position = GetCenterOfScreen();
 			if (scenario == 0 || scenario == 1) {
-				Battle_Start(&battle, Assets->plrTexture, battlePlrSrc);
+				Battle_Start(&battle, plr->texture, battlePlrSrc);
 				StartFightIntro(&encounter, &camera, plr, plrFrame);
 			}
 		}
@@ -370,15 +372,15 @@ int main() {
 
 		if (inBattle) {
 			Battle_Draw(&battle, plr->hp);
-		} else if (spiritMode) {
+		} else if (GameData->spiritMode) {
 			BeginMode2D(camera);
-			DrawWorld(background, Assets, debugInfo);
+			DrawWorld(background, Assets, GameData->debugMode);
 			EndMode2D();
 
-			MoveSpirit(&plrSpirit);
+			MoveSpirit(plrSpirit);
 
 			DrawBattleBackground(GetBattleSquareSize());
-			DrawRectangle(plrSpirit.position.x - (playerSpiritSize / 2), plrSpirit.position.y - (playerSpiritSize / 2), playerSpiritSize, playerSpiritSize, RED);
+			DrawRectangle(plrSpirit->position.x - (playerSpiritSize / 2), plrSpirit->position.y - (playerSpiritSize / 2), playerSpiritSize, playerSpiritSize, RED);
 		} else {
 			bool hasMovement = (plr->hp > 0 && !inIntro) ? MovePlr(plr, plrFrame, &plrCurrentFrame, Assets) : false;
 
@@ -402,32 +404,32 @@ int main() {
 			FollowPlayerWithCamera(&camera, plr->position, plrFrame);
 
 			BeginMode2D(camera);
-			DrawWorld(background, Assets, debugInfo);
-			DrawTextureRec(Assets->plrTexture, (Rectangle){plrFrame.width * plrCurrentFrame.x, plrFrame.height * plrCurrentFrame.y, plrFrame.width, plrFrame.height}, plr->position, WHITE);
+			DrawWorld(background, Assets, GameData->debugMode);
+			DrawTextureRec(plr->texture, (Rectangle){plrFrame.width * plrCurrentFrame.x, plrFrame.height * plrCurrentFrame.y, plrFrame.width, plrFrame.height}, plr->position, WHITE);
 			EndMode2D();
 		}
 
 		if (inIntro) { Encounter_Draw(&encounter); }
 
 		DrawText("Press [P] to show/hide debug info!", 15, 20, 30, WHITE);
-		if (debugInfo) {
+		if (GameData->debugMode) {
 			DrawText(TextFormat("HP: %d", plr->hp), 15, 70, 20, RED);
 			DrawText(TextFormat("Loaded Hitboxes: %d", Assets->GetHitboxAmount(Assets)), 15, 90, 20, BLUE);
 			DrawText(TextFormat("Scenario: %d", scenario), 15, 110, 20, LIGHTGRAY);
 
-			char* spiritStateStr = (spiritMode == true) ? "ON" : "OFF";
+			char* spiritStateStr = (GameData->spiritMode == true) ? "ON" : "OFF";
 			DrawText(TextFormat("Spirit Mode: %s ([SPACE] to toggle!)", spiritStateStr), 15, 50, 20, LIGHTGRAY);
-			if (spiritMode) { DrawText(TextFormat("Player Sprite State - (X:%.0f, Y:%.0f)", plrCurrentFrame.x, plrCurrentFrame.y), 15, GetScreenHeight() - 40, 20, LIGHTGRAY); }
+			if (!GameData->spiritMode) { DrawText(TextFormat("Player Sprite State - (X:%.0f, Y:%.0f)", plrCurrentFrame.x, plrCurrentFrame.y), 15, GetScreenHeight() - 40, 20, LIGHTGRAY); }
 		}
 		EndDrawing();
 	}
 
 	UnloadTexture(gardenBackground);
-	UnloadTexture(Assets->plrTexture);
+	GameData->UnloadCharacter(GameData, plr);
 	CloseWindow();
 
 	Assets->FreeHitboxes(Assets);
 	Assets->FreeImages(Assets);
 	if (Assets != NULL) { free(Assets); }
 	return 0;
-}	
+}
