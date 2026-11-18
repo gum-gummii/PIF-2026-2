@@ -8,6 +8,8 @@
 #include <combat.h>
 #include <battle.h>
 #include <encounter.h>
+#include <score.h>
+#include <minions.h>
 #include <time.h>
 
 
@@ -276,6 +278,16 @@ void GetAnimatedCharVector(Rectangle* animFrame, int* ticksToNextFrame, int tick
 
 
 
+Rectangle GetPlayerBody(Character* plr, Rectangle plrFrame) {
+	return (Rectangle){plr->position.x + plrFrame.width * 0.25f, plr->position.y + plrFrame.height * 0.3f, plrFrame.width * 0.5f, plrFrame.height * 0.65f};
+}
+
+int GetMinionCount(int scenario) {
+	if (scenario == 0) { return 7; }
+	if (scenario == 1) { return 4; }
+	return 5;
+}
+
 void StartFightIntro(Encounter* enc, Camera2D* camera, Character* plr, Rectangle plrFrame) {
 	Vector2 plrCenter = {plr->position.x + plrFrame.width / 2, plr->position.y + plrFrame.height / 2};
 	Encounter_Start(enc, GetWorldToScreen2D(plrCenter, *camera), "DEMONINHO");
@@ -313,6 +325,12 @@ int main() {
 	Encounter encounter = {0};
 	Rectangle battlePlrSrc = {plrFrame.width * 3, 0, plrFrame.width, plrFrame.height};
 
+	Score score;
+	Score_Init(&score, "highscore.txt");
+	MinionField minions = {0};
+	Vector2 plrFacing = {0, 1};
+	bool scoreSavedOnDeath = false;
+
 	while (!WindowShouldClose()) {
 		WaitTime(1.0 / 60.0);
 		clockTimestampMs += (1.0 / 60.0);
@@ -348,6 +366,7 @@ int main() {
 
 			background = (scenario == 0 && gardenBackground.id != 0) ? &gardenBackground : NULL;
 			SetupWorld(&camera, plr, plrFrame, background);
+			Minions_Spawn(&minions, GetMinionCount(scenario), worldSize, GetPlayerBody(plr, plrFrame), Assets);
 
 			// o demoninho mora nos cenarios 0 e 1
 			if (scenario == 0 || scenario == 1) {
@@ -362,6 +381,10 @@ int main() {
 		if (IsKeyPressed(KEY_R) || Battle_ConsumeRestart(&battle)) {
 			plr->hp = PLAYER_MAX_HP;
 			plr->position = GetCenterOfScreen();
+			Score_Save(&score);
+			Score_Reset(&score);
+			scoreSavedOnDeath = false;
+			Minions_Spawn(&minions, GetMinionCount(scenario), worldSize, GetPlayerBody(plr, plrFrame), Assets);
 			if (scenario == 0 || scenario == 1) {
 				Battle_Start(&battle, plr->texture, battlePlrSrc);
 				StartFightIntro(&encounter, &camera, plr, plrFrame);
@@ -401,13 +424,46 @@ int main() {
 
 			isMoving = hasMovement;
 
+			if (!inIntro) {
+				if (IsKeyDown(KEY_LEFT)  || IsKeyDown(KEY_A)) { plrFacing = (Vector2){-1, 0}; }
+				if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D)) { plrFacing = (Vector2){ 1, 0}; }
+				if (IsKeyDown(KEY_UP)    || IsKeyDown(KEY_W)) { plrFacing = (Vector2){ 0,-1}; }
+				if (IsKeyDown(KEY_DOWN)  || IsKeyDown(KEY_S)) { plrFacing = (Vector2){ 0, 1}; }
+			}
+
+			// [J], [K] ou clique esquerdo = bater
+			bool attackPressed = !inIntro && (IsKeyPressed(KEY_J) || IsKeyPressed(KEY_K) || IsMouseButtonPressed(MOUSE_BUTTON_LEFT));
+			Rectangle plrBody = GetPlayerBody(plr, plrFrame);
+			if (!inIntro) {
+				Minions_Update(&minions, 1.0f / 60.0f, plrBody, plrFacing, attackPressed, &plr->hp, &score, worldSize, Assets);
+			}
+
+			if (plr->hp <= 0 && !scoreSavedOnDeath) {
+				Score_Save(&score);
+				scoreSavedOnDeath = true;
+			}
+
 			FollowPlayerWithCamera(&camera, plr->position, plrFrame);
 
 			BeginMode2D(camera);
 			DrawWorld(background, Assets, GameData->debugMode);
-			DrawTextureRec(plr->texture, (Rectangle){plrFrame.width * plrCurrentFrame.x, plrFrame.height * plrCurrentFrame.y, plrFrame.width, plrFrame.height}, plr->position, WHITE);
+			Minions_Draw(&minions);
+			if (!Minions_PlayerBlink(&minions)) {
+				DrawTextureRec(plr->texture, (Rectangle){plrFrame.width * plrCurrentFrame.x, plrFrame.height * plrCurrentFrame.y, plrFrame.width, plrFrame.height}, plr->position, WHITE);
+			}
+			if (GameData->debugMode) { DrawRectangleLinesEx(plrBody, 2, YELLOW); }
+			Score_DrawPopups(&score);
 			EndMode2D();
+
+			Minions_DrawHurtOverlay(&minions);
+			if (plr->hp <= 0) {
+				const char* msg = "VOCE CAIU! [R] para recomecar";
+				DrawText(msg, GetScreenWidth() / 2 - MeasureText(msg, 40) / 2, GetScreenHeight() / 2 - 20, 40, RED);
+			}
 		}
+
+		Score_Update(&score, 1.0f / 60.0f);
+		if (!inBattle && !inIntro) { Score_DrawHud(&score); }
 
 		if (inIntro) { Encounter_Draw(&encounter); }
 
@@ -424,6 +480,7 @@ int main() {
 		EndDrawing();
 	}
 
+	Score_Save(&score);
 	UnloadTexture(gardenBackground);
 	GameData->UnloadCharacter(GameData, plr);
 	CloseWindow();
