@@ -118,12 +118,20 @@ endif
 GENERATED :=
 OBJECTS :=
 
+GENERATED += $(OBJDIR)/battle.o
 GENERATED += $(OBJDIR)/classes.o
 GENERATED += $(OBJDIR)/combat.o
+GENERATED += $(OBJDIR)/encounter.o
 GENERATED += $(OBJDIR)/main.o
+GENERATED += $(OBJDIR)/minions.o
+GENERATED += $(OBJDIR)/score.o
+OBJECTS += $(OBJDIR)/battle.o
 OBJECTS += $(OBJDIR)/classes.o
 OBJECTS += $(OBJDIR)/combat.o
+OBJECTS += $(OBJDIR)/encounter.o
 OBJECTS += $(OBJDIR)/main.o
+OBJECTS += $(OBJDIR)/minions.o
+OBJECTS += $(OBJDIR)/score.o
 
 # Rules
 # #############################################
@@ -187,13 +195,25 @@ endif
 # File Rules
 # #############################################
 
+$(OBJDIR)/battle.o: src/battle.c
+	@echo "$(notdir $<)"
+	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 $(OBJDIR)/classes.o: src/classes.c
 	@echo "$(notdir $<)"
 	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 $(OBJDIR)/combat.o: src/combat.c
 	@echo "$(notdir $<)"
 	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
+$(OBJDIR)/encounter.o: src/encounter.c
+	@echo "$(notdir $<)"
+	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 $(OBJDIR)/main.o: src/main.c
+	@echo "$(notdir $<)"
+	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
+$(OBJDIR)/minions.o: src/minions.c
+	@echo "$(notdir $<)"
+	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
+$(OBJDIR)/score.o: src/score.c
 	@echo "$(notdir $<)"
 	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 
