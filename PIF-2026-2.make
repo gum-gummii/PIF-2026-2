@@ -122,16 +122,22 @@ GENERATED += $(OBJDIR)/battle.o
 GENERATED += $(OBJDIR)/classes.o
 GENERATED += $(OBJDIR)/combat.o
 GENERATED += $(OBJDIR)/encounter.o
+GENERATED += $(OBJDIR)/enemies.o
 GENERATED += $(OBJDIR)/main.o
 GENERATED += $(OBJDIR)/minions.o
+GENERATED += $(OBJDIR)/progression.o
 GENERATED += $(OBJDIR)/score.o
+GENERATED += $(OBJDIR)/sprites.o
 OBJECTS += $(OBJDIR)/battle.o
 OBJECTS += $(OBJDIR)/classes.o
 OBJECTS += $(OBJDIR)/combat.o
 OBJECTS += $(OBJDIR)/encounter.o
+OBJECTS += $(OBJDIR)/enemies.o
 OBJECTS += $(OBJDIR)/main.o
 OBJECTS += $(OBJDIR)/minions.o
+OBJECTS += $(OBJDIR)/progression.o
 OBJECTS += $(OBJDIR)/score.o
+OBJECTS += $(OBJDIR)/sprites.o
 
 # Rules
 # #############################################
@@ -207,13 +213,22 @@ $(OBJDIR)/combat.o: src/combat.c
 $(OBJDIR)/encounter.o: src/encounter.c
 	@echo "$(notdir $<)"
 	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
+$(OBJDIR)/enemies.o: src/enemies.c
+	@echo "$(notdir $<)"
+	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 $(OBJDIR)/main.o: src/main.c
 	@echo "$(notdir $<)"
 	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 $(OBJDIR)/minions.o: src/minions.c
 	@echo "$(notdir $<)"
 	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
+$(OBJDIR)/progression.o: src/progression.c
+	@echo "$(notdir $<)"
+	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 $(OBJDIR)/score.o: src/score.c
+	@echo "$(notdir $<)"
+	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
+$(OBJDIR)/sprites.o: src/sprites.c
 	@echo "$(notdir $<)"
 	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 

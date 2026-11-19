@@ -562,11 +562,13 @@ static void DrawEnemy(const Battle* b) {
 static void DrawPlayer(const Battle* b) {
 	float scale = 150.0f / b->plrSrc.height;
 	Rectangle dest = {300, 150, b->plrSrc.width * scale, 150};
+	struct Rectangle plr_src;
+
 	for (int i = 0; i < 6; i++) {
 		DrawCircle((int)(dest.x + dest.width / 2), (int)(dest.y + 75), 170 - i * 26, Fade((Color){190, 150, 255, 255}, 0.07f));
 	}
 	DrawEllipse((int)(dest.x + dest.width / 2), (int)(dest.y + 150), (int)(dest.width / 2), 9, Fade(BLACK, 0.5f));
-	DrawTexturePro(b->plrTexture, b->plrSrc, dest, (Vector2){0, 0}, 0, WHITE);
+	DrawTexturePro(b->plrTexture, plr_src, dest, (Vector2){0, 0}, 0, WHITE);
 }
 
 static void DrawBackground(const Battle* b) {

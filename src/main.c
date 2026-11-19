@@ -326,7 +326,7 @@ int main() {
 
 	GameDataClass* GameData = InitGameData();
 	int plrFrameAmount = 4;
-	int plrAnimsAmount = 5;
+	int plrAnimsAmount = 10;
 	GameData->mainCharacter = GameData->NewCharacter(GameData, GetCenterOfScreen(), 17.5, PLAYER_MAX_HP, LoadTexture("playr.png"), (Vector2){plrFrameAmount, plrAnimsAmount});
 	Character* plr = GameData->mainCharacter;
 	if (plr == NULL) { return 1; }
