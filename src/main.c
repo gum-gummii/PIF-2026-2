@@ -21,7 +21,7 @@
 
 
 
-const bool DEBUG_MODE = true;
+const bool DEBUG_MODE = false;
 const float DMG_COOLDOWN = 0.8;
 
 int playerSpiritSize = 40;

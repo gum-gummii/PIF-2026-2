@@ -122,22 +122,28 @@ GENERATED += $(OBJDIR)/battle.o
 GENERATED += $(OBJDIR)/classes.o
 GENERATED += $(OBJDIR)/combat.o
 GENERATED += $(OBJDIR)/cutscene.o
+GENERATED += $(OBJDIR)/door.o
 GENERATED += $(OBJDIR)/encounter.o
 GENERATED += $(OBJDIR)/enemies.o
 GENERATED += $(OBJDIR)/main.o
 GENERATED += $(OBJDIR)/minions.o
 GENERATED += $(OBJDIR)/progression.o
+GENERATED += $(OBJDIR)/scene_overlay.o
+GENERATED += $(OBJDIR)/scenes.o
 GENERATED += $(OBJDIR)/score.o
 GENERATED += $(OBJDIR)/sprites.o
 OBJECTS += $(OBJDIR)/battle.o
 OBJECTS += $(OBJDIR)/classes.o
 OBJECTS += $(OBJDIR)/combat.o
 OBJECTS += $(OBJDIR)/cutscene.o
+OBJECTS += $(OBJDIR)/door.o
 OBJECTS += $(OBJDIR)/encounter.o
 OBJECTS += $(OBJDIR)/enemies.o
 OBJECTS += $(OBJDIR)/main.o
 OBJECTS += $(OBJDIR)/minions.o
 OBJECTS += $(OBJDIR)/progression.o
+OBJECTS += $(OBJDIR)/scene_overlay.o
+OBJECTS += $(OBJDIR)/scenes.o
 OBJECTS += $(OBJDIR)/score.o
 OBJECTS += $(OBJDIR)/sprites.o
 
@@ -215,6 +221,9 @@ $(OBJDIR)/combat.o: src/combat.c
 $(OBJDIR)/cutscene.o: src/cutscene.c
 	@echo "$(notdir $<)"
 	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
+$(OBJDIR)/door.o: src/door.c
+	@echo "$(notdir $<)"
+	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 $(OBJDIR)/encounter.o: src/encounter.c
 	@echo "$(notdir $<)"
 	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
@@ -228,6 +237,12 @@ $(OBJDIR)/minions.o: src/minions.c
 	@echo "$(notdir $<)"
 	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 $(OBJDIR)/progression.o: src/progression.c
+	@echo "$(notdir $<)"
+	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
+$(OBJDIR)/scene_overlay.o: src/scene_overlay.c
+	@echo "$(notdir $<)"
+	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
+$(OBJDIR)/scenes.o: src/scenes.c
 	@echo "$(notdir $<)"
 	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 $(OBJDIR)/score.o: src/score.c
