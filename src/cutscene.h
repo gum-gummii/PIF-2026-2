@@ -3,6 +3,7 @@
 
 #include <raylib.h>
 
+void Cutscene_StartIntro(Texture2D naraSheet, Rectangle naraFrame);
 void Cutscene_StartBoss(Texture2D naraSheet, Rectangle naraFrame);
 void Cutscene_Update(float dt);
 void Cutscene_Draw(void);
