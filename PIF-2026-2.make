@@ -121,6 +121,7 @@ OBJECTS :=
 GENERATED += $(OBJDIR)/battle.o
 GENERATED += $(OBJDIR)/classes.o
 GENERATED += $(OBJDIR)/combat.o
+GENERATED += $(OBJDIR)/cutscene.o
 GENERATED += $(OBJDIR)/encounter.o
 GENERATED += $(OBJDIR)/enemies.o
 GENERATED += $(OBJDIR)/main.o
@@ -131,6 +132,7 @@ GENERATED += $(OBJDIR)/sprites.o
 OBJECTS += $(OBJDIR)/battle.o
 OBJECTS += $(OBJDIR)/classes.o
 OBJECTS += $(OBJDIR)/combat.o
+OBJECTS += $(OBJDIR)/cutscene.o
 OBJECTS += $(OBJDIR)/encounter.o
 OBJECTS += $(OBJDIR)/enemies.o
 OBJECTS += $(OBJDIR)/main.o
@@ -208,6 +210,9 @@ $(OBJDIR)/classes.o: src/classes.c
 	@echo "$(notdir $<)"
 	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 $(OBJDIR)/combat.o: src/combat.c
+	@echo "$(notdir $<)"
+	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
+$(OBJDIR)/cutscene.o: src/cutscene.c
 	@echo "$(notdir $<)"
 	$(SILENT) $(CC) $(ALL_CFLAGS) $(FORCE_INCLUDE) -o "$@" -MF "$(@:%.o=%.d)" -c "$<"
 $(OBJDIR)/encounter.o: src/encounter.c

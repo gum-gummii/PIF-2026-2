@@ -1,0 +1,46 @@
+Coloque os PNGs nesta pasta (resources/cutscene/) com exatamente estes nomes.
+Enquanto um arquivo nao existir, o jogo desenha um boneco provisorio no lugar
+(com o nome do arquivo que falta escrito embaixo dele). Nao precisa mexer em codigo.
+
+  irma.png            irma normal (parada / andando)
+  irma_rindo.png      irma rindo: do risinho ate a boca enorme cheia de dentes
+  irma_x.png          a cabeca dela caida, com olhos em X e a boca FECHADA
+                      (a linha da boca bem no MEIO da altura da imagem: o jogo
+                      corta a imagem ali e afasta as metades pra boca abrir,
+                      e o dragao sai de dentro)
+  dragao.png          o dragao parado
+  dragao_rugindo.png  o dragao rugindo (opcional: se nao existir, usa dragao.png)
+
+A Nara usa o playr.png que ja existe. O fundo e o karddkassino_bossroom.png.
+
+
+COMO DESENHAR
+-------------
+- Fundo transparente.
+- Personagem virado/olhando para a ESQUERDA (a Nara fica do lado esquerdo).
+- Os pes do personagem encostados na borda de baixo da imagem.
+- Pode ser de qualquer tamanho: o jogo ajusta a altura sozinho
+  (irma ~150 px na tela, dragao ~330 px).
+
+ANIMACAO (opcional)
+-------------------
+Para animar, coloque os quadros LADO A LADO numa tira horizontal,
+todos QUADRADOS e do mesmo tamanho. O jogo conta os quadros sozinho
+(largura da imagem / altura da imagem).
+
+  Exemplo: 4 quadros de 128x128 -> imagem de 512x128.
+
+  irma.png          1 quadro = parada; 2 ou mais = anima quando ela anda
+  irma_rindo.png    os quadros vao do risinho (1o) ate a boca escancarada (ultimo).
+                    Os 2 primeiros quadros sao usados no "risinho" do comeco.
+  dragao.png        anima em loop
+  dragao_rugindo.png anima em loop enquanto ele ruge
+
+Se o quadro nao for quadrado (ex: personagem alto e fino), deixe espaco vazio
+dos lados para ficar quadrado.
+
+
+MUDAR A CENA
+------------
+O roteiro fica no comeco de src/cutscene.c (BOSS_SCRIPT), separado por quadro
+do desenho. Da para mudar falas, tempos e posicoes ali.

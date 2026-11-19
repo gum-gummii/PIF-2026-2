@@ -11,6 +11,7 @@
 #include <score.h>
 #include <minions.h>
 #include <progression.h>
+#include <cutscene.h>
 #include <time.h>
 
 
@@ -360,6 +361,10 @@ int main() {
 	Progression progress;
 	Progression_Reset(&progress, 0);
 
+	Cutscene cutscene = {0};
+	const EnemyDef* cutsceneBattle = NULL;
+	bool bossCutsceneSeen = false;
+
 	while (!WindowShouldClose()) {
 		WaitTime(1.0 / 60.0);
 		clockTimestampMs += (1.0 / 60.0);
@@ -370,6 +375,14 @@ int main() {
 
 		Encounter_Update(&encounter, 1.0f / 60.0f);
 		bool inIntro = Encounter_IsActive(&encounter);
+
+		Cutscene_Update(&cutscene, 1.0f / 60.0f);
+		bool inCutscene = Cutscene_IsActive(&cutscene);
+		if (!inCutscene && cutsceneBattle != NULL) {
+			Battle_Start(&battle, cutsceneBattle, plr->texture, battlePlrSrc);
+			cutsceneBattle = NULL;
+		}
+
 		bool inBattle = Battle_IsActive(&battle) && !inIntro;
 		StageContext stage = {&minions, &score, worldSize, GetPlayerBody(plr, plrFrame), Assets};
 
@@ -379,12 +392,12 @@ int main() {
 			inBattle = Battle_IsActive(&battle);
 		}
 
-		if (!inBattle && !inIntro) {
+		if (!inBattle && !inIntro && !inCutscene) {
 			if (IsKeyPressed(KEY_Q)) { scenario -= 1; }
 			if (IsKeyPressed(KEY_E)) { scenario += 1; printf("NEXT"); }
 		}
 
-		if (IsKeyPressed(KEY_SPACE) && !inIntro && !inBattle) {
+		if (IsKeyPressed(KEY_SPACE) && !inIntro && !inBattle && !inCutscene) {
 			GameData->spiritMode = !GameData->spiritMode;
 
 			if (GameData->spiritMode) {
@@ -408,10 +421,12 @@ int main() {
 			Progression_Reset(&progress, GetWinsToBoss(scenario));
 			Battle_Stop(&battle);
 			Encounter_Stop(&encounter);
+			Cutscene_Stop(&cutscene);
+			cutsceneBattle = NULL;
 		}
 
 		// reinicia a luta
-		if ((IsKeyPressed(KEY_R) && !inBattle && !inIntro) || Battle_ConsumeRestart(&battle)) {
+		if ((IsKeyPressed(KEY_R) && !inBattle && !inIntro && !inCutscene) || Battle_ConsumeRestart(&battle)) {
 			plr->hp = PLAYER_MAX_HP;
 			plr->position = GetScenarioSpawn(scenario);
 			Score_Save(&score);
@@ -427,7 +442,9 @@ int main() {
 
 
 
-		if (inBattle) {
+		if (inCutscene) {
+			Cutscene_Draw(&cutscene);
+		} else if (inBattle) {
 			Battle_Draw(&battle, plr->hp);
 		} else if (GameData->spiritMode) {
 			BeginMode2D(camera);
@@ -472,8 +489,15 @@ int main() {
 				MinionInput input = {plrBody, plrFacing, attackPressed, plr->hp > 0, plr->hp > 0 && Progression_CanEncounter(&progress)};
 				int touched = Minions_Update(&minions, 1.0f / 60.0f, input, &score, worldSize, Assets);
 				if (touched >= 0) {
+					const EnemyDef* def = Enemy_Get(Minions_EnemyOf(&minions, touched));
 					Progression_BeginFight(&progress, touched);
-					StartEncounter(&battle, &encounter, Enemy_Get(Minions_EnemyOf(&minions, touched)), &camera, plr, plrFrame, battlePlrSrc);
+					if (def->isBoss && !bossCutsceneSeen) {
+						bossCutsceneSeen = true;
+						cutsceneBattle = def;
+						Cutscene_StartBoss(&cutscene, plr->texture, plrFrame);
+					} else {
+						StartEncounter(&battle, &encounter, def, &camera, plr, plrFrame, battlePlrSrc);
+					}
 				}
 				Progression_Update(&progress, 1.0f / 60.0f, stage);
 			}
@@ -500,15 +524,15 @@ int main() {
 		}
 
 		Score_Update(&score, 1.0f / 60.0f);
-		if (!inBattle && !inIntro) {
+		if (!inBattle && !inIntro && !inCutscene) {
 			Score_DrawHud(&score);
 			Progression_DrawHud(&progress);
 		}
 
 		if (inIntro) { Encounter_Draw(&encounter); }
 
-		DrawText("Press [P] to show/hide debug info!", 15, 20, 30, WHITE);
-		if (GameData->debugMode) {
+		if (!inCutscene) { DrawText("Press [P] to show/hide debug info!", 15, 20, 30, WHITE); }
+		if (GameData->debugMode && !inCutscene) {
 			DrawText(TextFormat("HP: %d", plr->hp), 15, 70, 20, RED);
 			DrawText(TextFormat("Loaded Hitboxes: %d", Assets->GetHitboxAmount(Assets)), 15, 90, 20, BLUE);
 			DrawText(TextFormat("Scenario: %d", scenario), 15, 110, 20, LIGHTGRAY);
@@ -522,6 +546,7 @@ int main() {
 
 	Score_Save(&score);
 	for (int i = 0; i < backgroundCount; i++) { UnloadTexture(scenarioBackgrounds[i]); }
+	Cutscene_Unload(&cutscene);
 	GameData->UnloadCharacter(GameData, plr);
 	CloseWindow();
 
