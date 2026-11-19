@@ -16,7 +16,14 @@ typedef enum {
 typedef enum {
 	PATTERN_RAIN  = 1 << 0,
 	PATTERN_SIDES = 1 << 1,
-	PATTERN_FAN   = 1 << 2
+	PATTERN_FAN   = 1 << 2,
+
+	PATTERN_HEARTS   = 1 << 3,  // atk1
+	PATTERN_SPADES   = 1 << 4,  // atk2
+	PATTERN_CLUBS    = 1 << 5,  // atk3
+	PATTERN_DIAMONDS = 1 << 6,  // atk4
+	PATTERN_PAW      = 1 << 7,  // atk5
+	PATTERN_WALL     = 1 << 8   // atk6
 } BulletPattern;
 
 typedef struct {

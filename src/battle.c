@@ -18,7 +18,42 @@
 
 static const char* BUTTON_LABELS[BUTTON_COUNT] = {"LUTAR", "AGIR", "ITEM", "POUPAR", "DEFENDER"};
 static const char* SPARE_LABELS[2] = {"Poupar", "Fugir"};
-static const BulletPattern ALL_PATTERNS[3] = {PATTERN_RAIN, PATTERN_SIDES, PATTERN_FAN};
+#define PATTERN_TYPES     9
+static const BulletPattern ALL_PATTERNS[PATTERN_TYPES] = {
+	PATTERN_RAIN, PATTERN_SIDES, PATTERN_FAN,
+	PATTERN_HEARTS, PATTERN_SPADES, PATTERN_CLUBS, PATTERN_DIAMONDS, PATTERN_PAW, PATTERN_WALL,
+};
+
+#define HAZARD_STOP_EARLY 1.9f
+
+#define HEART_FUSE        1.1f  // atk1
+#define HEART_BULLETS     18
+
+#define SPADE_APPEAR      0.6f  // atk2
+#define SPADE_OPEN        0.15f
+#define SPADE_FIRE        0.5f
+#define SPADE_CLOSE       0.25f
+#define LASER_W           26.0f
+
+#define CLUB_APPEAR       0.4f  // atk3
+#define CLUB_GROW         0.3f
+#define CLUB_HOLD         0.25f
+#define CLUB_ROTATE       0.3f
+#define CLUB_BLAST        0.1f
+#define CLUB_FADE         0.4f
+#define ROD_LEN           62.0f
+#define ROD_W             9.0f
+
+#define DIAMOND_FUSE      0.75f // atk4
+#define DIAMOND_SPEED     430.0f
+
+#define PAW_WARN          0.95f // atk5
+#define PAW_SLAM          0.12f
+#define PAW_HOLD          0.45f
+#define PAW_RETREAT       0.2f
+
+#define WALL_BULLETS      56    // atk6
+#define WALL_GAP          72.0f
 
 static bool Confirm(void) { return IsKeyPressed(KEY_Z) || IsKeyPressed(KEY_ENTER); }
 static bool Cancel(void) { return IsKeyPressed(KEY_X) || IsKeyPressed(KEY_BACKSPACE); }
@@ -98,18 +133,34 @@ static int ScaledDamage(const Battle* b, int base) {
 	return dmg < 1 ? 1 : dmg;
 }
 
-static void AddBullet(Battle* b, Vector2 pos, Vector2 vel, float r, int dmg) {
+static void AddShapedBullet(Battle* b, Vector2 pos, Vector2 vel, float r, int dmg, BulletShape shape) {
 	for (int i = 0; i < MAX_BULLETS; i++) {
 		if (b->bullets[i].active) { continue; }
-		b->bullets[i] = (Bullet){true, pos, vel, r, dmg, false};
+		b->bullets[i] = (Bullet){true, pos, vel, r, dmg, false, shape};
 		return;
 	}
 }
 
+static void AddBullet(Battle* b, Vector2 pos, Vector2 vel, float r, int dmg) {
+	AddShapedBullet(b, pos, vel, r, dmg, BULLET_ROUND);
+}
+
+static void AddHazard(Battle* b, Hazard h) {
+	for (int i = 0; i < MAX_HAZARDS; i++) {
+		if (b->hazards[i].kind != HZ_NONE) { continue; }
+		b->hazards[i] = h;
+		return;
+	}
+}
+
+static bool IsHazardPattern(BulletPattern p) {
+	return p == PATTERN_HEARTS || p == PATTERN_SPADES || p == PATTERN_CLUBS || p == PATTERN_DIAMONDS || p == PATTERN_PAW;
+}
+
 static BulletPattern PickPattern(const Battle* b) {
-	BulletPattern options[3];
+	BulletPattern options[PATTERN_TYPES];
 	int n = 0;
-	for (int i = 0; i < 3; i++) {
+	for (int i = 0; i < PATTERN_TYPES; i++) {
 		if (b->def->patterns & ALL_PATTERNS[i]) { options[n++] = ALL_PATTERNS[i]; }
 	}
 	if (n == 0) { return PATTERN_RAIN; }
@@ -163,6 +214,8 @@ static void GoTo(Battle* b, BattleState s) {
 		Rectangle box = BulletBox();
 		b->soul = (Vector2){box.x + box.width / 2, box.y + box.height / 2};
 		memset(b->bullets, 0, sizeof(b->bullets));
+		memset(b->hazards, 0, sizeof(b->hazards));
+		b->lastSide = -1;
 		b->pattern = PickPattern(b);
 		b->spawnT = 0.3f;
 		b->invuln = 0;
@@ -233,9 +286,318 @@ static void SoulMove(Battle* b, float dt) {
 	b->soul.y = Clampf(b->soul.y, box.y + 5 + 12, box.y + box.height - 5 - 12);
 }
 
+#define SPADE_END  (SPADE_APPEAR + SPADE_OPEN + SPADE_FIRE + SPADE_CLOSE)
+#define CLUB_HIT_T (CLUB_APPEAR + CLUB_GROW + CLUB_HOLD + CLUB_ROTATE)
+#define CLUB_END   (CLUB_HIT_T + CLUB_BLAST + CLUB_FADE)
+#define PAW_END    (PAW_WARN + PAW_SLAM + PAW_HOLD + PAW_RETREAT)
+
+static float PatternSpeed(const Battle* b) {
+	return b->def->bulletSpeed * (EnemyAngry(b) ? 1.25f : 1.0f);
+}
+
+static float RandF(float lo, float hi) {
+	return lo + (hi - lo) * (float)GetRandomValue(0, 10000) / 10000.0f;
+}
+
+static float Dist(Vector2 a, Vector2 c) {
+	float dx = a.x - c.x, dy = a.y - c.y;
+	return sqrtf(dx * dx + dy * dy);
+}
+
+static float SegDist(Vector2 p, Vector2 a, Vector2 c) {
+	float vx = c.x - a.x, vy = c.y - a.y;
+	float len2 = vx * vx + vy * vy;
+	float t = len2 > 0 ? Clampf(((p.x - a.x) * vx + (p.y - a.y) * vy) / len2, 0, 1) : 0;
+	return Dist(p, (Vector2){a.x + vx * t, a.y + vy * t});
+}
+
+static Vector2 RandomInBox(float margin) {
+	Rectangle box = BulletBox();
+	return (Vector2){RandF(box.x + margin, box.x + box.width - margin), RandF(box.y + margin, box.y + box.height - margin)};
+}
+
+static Vector2 RandomAwayFromSoul(const Battle* b, float margin, float minDist) {
+	Vector2 p = RandomInBox(margin);
+	for (int i = 0; i < 16 && Dist(p, b->soul) < minDist; i++) { p = RandomInBox(margin); }
+	return p;
+}
+
+static void HurtSoul(Battle* b, int dmg, int* plrHp) {
+	if (b->invuln > 0) { return; }
+	if (b->defending) { dmg = (dmg + 1) / 2; }
+	*plrHp -= dmg;
+	if (*plrHp < 0) { *plrHp = 0; }
+	b->invuln = INVULN_TIME;
+	b->hurtFlash = 0.25f;
+}
+
+static Vector2 HeartPoint(float t) {
+	float s = sinf(t);
+	return (Vector2){
+		16.0f * s * s * s / 17.0f,
+		-(13.0f * cosf(t) - 5.0f * cosf(2 * t) - 2.0f * cosf(3 * t) - cosf(4 * t)) / 17.0f + 0.15f,
+	};
+}
+
+// atk2
+static float SpadeLaserWidth(const Hazard* h, bool* hurts) {
+	float t0 = SPADE_APPEAR, t1 = t0 + SPADE_OPEN, t2 = t1 + SPADE_FIRE;
+	*hurts = false;
+	if (h->t < t0) { return 0; }
+	if (h->t < t1) { return LASER_W * (h->t - t0) / SPADE_OPEN; }
+	if (h->t < t2) { *hurts = true; return LASER_W; }
+	if (h->t < SPADE_END) { return LASER_W * (1.0f - (h->t - t2) / SPADE_CLOSE); }
+	return 0;
+}
+
+static Vector2 SpadeLaserEnd(const Hazard* h) {
+	return (Vector2){h->pos.x + cosf(h->dir) * h->len, h->pos.y + sinf(h->dir) * h->len};
+}
+
+// atk3
+typedef struct {
+	Vector2 from[3];
+	Vector2 to[3];
+	int count;
+	float width;
+	float alpha;
+} ClubRods;
+
+static ClubRods ClubGeometry(const Hazard* h) {
+	ClubRods r = {0};
+	r.width = ROD_W;
+	r.alpha = 1.0f;
+
+	float tGrow = CLUB_APPEAR;
+	float tRot = tGrow + CLUB_GROW + CLUB_HOLD;
+	float tFade = CLUB_HIT_T + CLUB_BLAST;
+	Vector2 o = {h->pos.x + cosf(h->dir) * 12, h->pos.y + sinf(h->dir) * 12};
+
+	if (h->t < tGrow) { return r; }
+
+	if (h->t < CLUB_HIT_T) {
+		float len = ROD_LEN * Clampf((h->t - tGrow) / CLUB_GROW, 0, 1);
+		float k = Clampf((h->t - tRot) / CLUB_ROTATE, 0, 1);
+		float side = (PI / 4) * (1.0f - k * k);
+		float angs[3] = {h->dir, h->dir - side, h->dir + side};
+		for (int i = 0; i < 3; i++) {
+			r.from[i] = o;
+			r.to[i] = (Vector2){o.x + cosf(angs[i]) * len, o.y + sinf(angs[i]) * len};
+		}
+		r.count = 3;
+		return r;
+	}
+
+	float e = Clampf((h->t - CLUB_HIT_T) / CLUB_BLAST, 0, 1);
+	float len = ROD_LEN * (1.0f + 2.0f * e);
+	r.width = ROD_W * (1.0f + 0.8f * e);
+	r.alpha = 1.0f - Clampf((h->t - tFade) / CLUB_FADE, 0, 1);
+	r.from[0] = o;
+	r.to[0] = (Vector2){o.x + cosf(h->dir) * len, o.y + sinf(h->dir) * len};
+	r.count = 1;
+	return r;
+}
+
+// atk5
+static float PawSlide(const Hazard* h, bool* hurts) {
+	float t0 = PAW_WARN, t1 = t0 + PAW_SLAM, t2 = t1 + PAW_HOLD;
+	*hurts = false;
+	if (h->t < t0) { return 0; }
+	if (h->t < t1) {
+		float k = (h->t - t0) / PAW_SLAM;
+		*hurts = k > 0.85f;
+		return k;
+	}
+	if (h->t < t2) { *hurts = true; return 1; }
+	if (h->t < PAW_END) { return 1.0f - (h->t - t2) / PAW_RETREAT; }
+	return 0;
+}
+
+static Vector2 PawForward(int side) {
+	switch (side) {
+	case 0:  return (Vector2){1, 0};
+	case 1:  return (Vector2){-1, 0};
+	case 2:  return (Vector2){0, 1};
+	default: return (Vector2){0, -1};
+	}
+}
+
+static void ExplodeHeart(Battle* b, const Hazard* h, float spd) {
+	for (int k = 0; k < HEART_BULLETS; k++) {
+		Vector2 p = HeartPoint(2 * PI * k / HEART_BULLETS);
+		Vector2 pos = {h->pos.x + p.x * 10, h->pos.y + p.y * 10};
+		AddShapedBullet(b, pos, (Vector2){p.x * 150 * spd, p.y * 150 * spd}, 6, ScaledDamage(b, 8), BULLET_HEART);
+	}
+}
+
+static void ExplodeDiamond(Battle* b, const Hazard* h, float spd) {
+	Vector2 target = b->soul;
+	Vector2 offs[4] = {{0, -18}, {14, 0}, {0, 18}, {-14, 0}};
+	for (int k = 0; k < 4; k++) {
+		Vector2 start = {h->pos.x + offs[k].x, h->pos.y + offs[k].y};
+		Vector2 d = Norm((Vector2){target.x - start.x, target.y - start.y});
+		if (d.x == 0 && d.y == 0) { d = Norm(offs[k]); }
+		AddShapedBullet(b, start, (Vector2){d.x * DIAMOND_SPEED * spd, d.y * DIAMOND_SPEED * spd}, 7, ScaledDamage(b, 9), BULLET_DIAMOND);
+	}
+}
+
+static void UpdateHazards(Battle* b, float dt, int* plrHp) {
+	float spd = PatternSpeed(b);
+
+	for (int i = 0; i < MAX_HAZARDS; i++) {
+		Hazard* h = &b->hazards[i];
+		if (h->kind == HZ_NONE) { continue; }
+		h->t += dt;
+
+		switch (h->kind) {
+		case HZ_HEART:
+			if (h->t >= HEART_FUSE) {
+				ExplodeHeart(b, h, spd);
+				h->kind = HZ_NONE;
+			}
+			break;
+
+		case HZ_SPADE: {
+			bool hurts;
+			SpadeLaserWidth(h, &hurts);
+			if (hurts && SegDist(b->soul, h->pos, SpadeLaserEnd(h)) < LASER_W * 0.5f + SOUL_HIT_R) {
+				HurtSoul(b, ScaledDamage(b, 10), plrHp);
+			}
+			if (h->t >= SPADE_END) { h->kind = HZ_NONE; }
+			break;
+		}
+
+		case HZ_CLUB: {
+			ClubRods r = ClubGeometry(h);
+			if (r.alpha > 0.35f) {
+				for (int k = 0; k < r.count; k++) {
+					if (SegDist(b->soul, r.from[k], r.to[k]) < r.width * 0.5f + SOUL_HIT_R) {
+						HurtSoul(b, ScaledDamage(b, 9), plrHp);
+					}
+				}
+			}
+			if (h->t >= CLUB_END) { h->kind = HZ_NONE; }
+			break;
+		}
+
+		case HZ_DIAMOND:
+			if (h->t >= DIAMOND_FUSE) {
+				ExplodeDiamond(b, h, spd);
+				h->kind = HZ_NONE;
+			}
+			break;
+
+		case HZ_PAW: {
+			bool hurts;
+			PawSlide(h, &hurts);
+			if (hurts && CheckCollisionCircleRec(b->soul, SOUL_HIT_R, h->area)) {
+				HurtSoul(b, ScaledDamage(b, 14), plrHp);
+			}
+			if (h->t >= PAW_END) { h->kind = HZ_NONE; }
+			break;
+		}
+
+		default:
+			h->kind = HZ_NONE;
+			break;
+		}
+	}
+}
+
+static void SpawnBossPattern(Battle* b, float spd) {
+	Rectangle box = BulletBox();
+
+	switch (b->pattern) {
+	case PATTERN_HEARTS:  // atk1
+		AddHazard(b, (Hazard){.kind = HZ_HEART, .pos = RandomAwayFromSoul(b, 28, 50)});
+		b->spawnT = 0.7f / spd;
+		break;
+
+	case PATTERN_SPADES: {  // atk2
+		int side = GetRandomValue(0, 2);
+		bool aim = GetRandomValue(0, 1) == 1;
+		Hazard h = {.kind = HZ_SPADE, .side = side};
+		if (side == 2) {
+			float x = aim ? b->soul.x : RandF(box.x + 30, box.x + box.width - 30);
+			h.pos = (Vector2){x, box.y - 22};
+			h.dir = PI / 2;
+			h.len = box.height + 40;
+		} else {
+			float y = aim ? b->soul.y : RandF(box.y + 25, box.y + box.height - 25);
+			h.pos = (Vector2){side == 0 ? box.x - 22 : box.x + box.width + 22, y};
+			h.dir = side == 0 ? 0 : PI;
+			h.len = box.width + 40;
+		}
+		AddHazard(b, h);
+		b->spawnT = 0.75f / spd;
+		break;
+	}
+
+	case PATTERN_CLUBS: {  // atk3
+		bool fromBottom = GetRandomValue(0, 1) == 1;
+		float x = RandF(box.x + 40, box.x + box.width - 40);
+		AddHazard(b, (Hazard){
+			.kind = HZ_CLUB,
+			.pos = (Vector2){x, fromBottom ? box.y + box.height - 26 : box.y + 26},
+			.dir = fromBottom ? -PI / 2 : PI / 2,
+		});
+		b->spawnT = 0.85f / spd;
+		break;
+	}
+
+	case PATTERN_DIAMONDS:  // atk4
+		AddHazard(b, (Hazard){.kind = HZ_DIAMOND, .pos = RandomAwayFromSoul(b, 26, 100)});
+		b->spawnT = 0.65f / spd;
+		break;
+
+	case PATTERN_PAW: {  // atk5
+		int side = GetRandomValue(0, 3);
+		while (side == b->lastSide) { side = GetRandomValue(0, 3); }
+		b->lastSide = side;
+
+		Rectangle a = box;
+		if (side == 0) { a.width /= 2; }
+		else if (side == 1) { a.width /= 2; a.x += a.width; }
+		else if (side == 2) { a.height /= 2; }
+		else { a.height /= 2; a.y += a.height; }
+
+		AddHazard(b, (Hazard){.kind = HZ_PAW, .area = a, .side = side});
+		b->spawnT = PAW_END + 0.1f;
+		break;
+	}
+
+	case PATTERN_WALL: {  // atk6
+		Vector2 ec = EnemyCenter();
+		Vector2 bc = {box.x + box.width / 2, box.y + box.height / 2};
+		Vector2 gp = {RandF(box.x + 40, box.x + box.width - 40), RandF(box.y + 30, box.y + box.height - 30)};
+		float base = atan2f(bc.y - ec.y, bc.x - ec.x);
+		float gapA = atan2f(gp.y - ec.y, gp.x - ec.x);
+		float gapHalf = (WALL_GAP * 0.5f) / Dist(ec, gp);
+
+		for (int i = 0; i < WALL_BULLETS; i++) {
+			float a = base - PI / 2 + PI * i / (WALL_BULLETS - 1);
+			float diff = atan2f(sinf(a - gapA), cosf(a - gapA));
+			if (fabsf(diff) < gapHalf) { continue; }
+			AddBullet(b, ec, (Vector2){cosf(a) * 200 * spd, sinf(a) * 200 * spd}, 8, ScaledDamage(b, 8));
+		}
+		b->spawnT = 1.1f / spd;
+		break;
+	}
+
+	default:
+		b->spawnT = 1.0f;
+		break;
+	}
+}
+
 static void SpawnPattern(Battle* b) {
 	Rectangle box = BulletBox();
-	float spd = b->def->bulletSpeed * (EnemyAngry(b) ? 1.25f : 1.0f);
+	float spd = PatternSpeed(b);
+
+	if (b->pattern & (PATTERN_HEARTS | PATTERN_SPADES | PATTERN_CLUBS | PATTERN_DIAMONDS | PATTERN_PAW | PATTERN_WALL)) {
+		SpawnBossPattern(b, spd);
+		return;
+	}
 
 	if (b->pattern == PATTERN_RAIN) {
 		float x = (float)GetRandomValue((int)box.x + 12, (int)(box.x + box.width) - 12);
@@ -262,10 +624,13 @@ static void SpawnPattern(Battle* b) {
 static void UpdateEnemyTurn(Battle* b, float dt, int* plrHp) {
 	SoulMove(b, dt);
 
-	if (b->stateT < b->def->turnTime - SPAWN_STOP_EARLY) {
+	float stopEarly = IsHazardPattern(b->pattern) ? HAZARD_STOP_EARLY : SPAWN_STOP_EARLY;
+	if (b->stateT < b->def->turnTime - stopEarly) {
 		b->spawnT -= dt;
 		if (b->spawnT <= 0) { SpawnPattern(b); }
 	}
+
+	UpdateHazards(b, dt, plrHp);
 
 	int sw = GetScreenWidth(), sh = GetScreenHeight();
 	for (int i = 0; i < MAX_BULLETS; i++) {
@@ -283,11 +648,7 @@ static void UpdateEnemyTurn(Battle* b, float dt, int* plrHp) {
 		float dist = sqrtf(dx * dx + dy * dy);
 
 		if (dist < bl->r + SOUL_HIT_R && b->invuln <= 0) {
-			int dmg = b->defending ? (bl->dmg + 1) / 2 : bl->dmg;
-			*plrHp -= dmg;
-			if (*plrHp < 0) { *plrHp = 0; }
-			b->invuln = INVULN_TIME;
-			b->hurtFlash = 0.25f;
+			HurtSoul(b, bl->dmg, plrHp);
 			bl->active = false;
 			continue;
 		}
@@ -305,6 +666,7 @@ static void UpdateEnemyTurn(Battle* b, float dt, int* plrHp) {
 
 	if (b->stateT >= b->def->turnTime) {
 		memset(b->bullets, 0, sizeof(b->bullets));
+		memset(b->hazards, 0, sizeof(b->hazards));
 		b->defending = false;
 		b->turn++;
 		GoTo(b, B_MENU);
@@ -729,13 +1091,225 @@ static void DrawBubble(const Battle* b) {
 	DrawTyped(b->line, b->stateT, (int)r.x + 20, (int)r.y + 24, 28, BLACK);
 }
 
+#define HEART_COLOR    (Color){240, 50, 90, 255}
+#define SPADE_COLOR    (Color){170, 110, 255, 255}
+#define CLUB_COLOR     (Color){80, 220, 120, 255}
+#define DIAMOND_COLOR  (Color){80, 200, 255, 255}
+
+static Vector2 LocalPt(Vector2 o, float ang, float x, float y) {
+	float c = cosf(ang), s = sinf(ang);
+	return (Vector2){o.x + x * c - y * s, o.y + x * s + y * c};
+}
+
+static void Tri(Vector2 a, Vector2 c, Vector2 d, Color col) {
+	float cross = (c.x - a.x) * (d.y - a.y) - (c.y - a.y) * (d.x - a.x);
+	if (cross > 0) { DrawTriangle(a, d, c, col); }
+	else { DrawTriangle(a, c, d, col); }
+}
+
+static bool Blink(float t, float fuse) {
+	float rate = 8.0f + 22.0f * Clampf(t / fuse, 0, 1);
+	return sinf(t * rate) > -0.3f;
+}
+
+static void DrawHeartShape(Vector2 c, float s, Color col) {
+	DrawCircleV((Vector2){c.x - s * 0.5f, c.y - s * 0.2f}, s * 0.55f, col);
+	DrawCircleV((Vector2){c.x + s * 0.5f, c.y - s * 0.2f}, s * 0.55f, col);
+	Tri((Vector2){c.x - s * 1.02f, c.y}, (Vector2){c.x + s * 1.02f, c.y}, (Vector2){c.x, c.y + s * 1.15f}, col);
+}
+
+static void DrawDiamondShape(Vector2 c, float s, Color col) {
+	Vector2 top = {c.x, c.y - s * 1.3f}, bot = {c.x, c.y + s * 1.3f};
+	Vector2 left = {c.x - s, c.y}, right = {c.x + s, c.y};
+	Tri(top, left, right, col);
+	Tri(bot, left, right, col);
+}
+
+static void DrawSpadeHalf(Vector2 c, float s, float ang, float side, float open, Color col) {
+	float o = open * side;
+	DrawCircleV(LocalPt(c, ang, side * 0.5f * s + o, 0.2f * s), 0.55f * s, col);
+	Tri(LocalPt(c, ang, side * 1.02f * s + o, 0), LocalPt(c, ang, o, 0), LocalPt(c, ang, o, -1.15f * s), col);
+	Tri(LocalPt(c, ang, o, 0.25f * s), LocalPt(c, ang, side * 0.35f * s + o, 0.9f * s), LocalPt(c, ang, o, 0.9f * s), col);
+}
+
+static void DrawClubShape(Vector2 c, float s, float ang, Color col) {
+	DrawCircleV(LocalPt(c, ang, 0, -0.45f * s), 0.42f * s, col);
+	DrawCircleV(LocalPt(c, ang, -0.45f * s, 0.1f * s), 0.42f * s, col);
+	DrawCircleV(LocalPt(c, ang, 0.45f * s, 0.1f * s), 0.42f * s, col);
+	DrawCircleV(c, 0.3f * s, col);
+	Tri(LocalPt(c, ang, 0, 0.1f * s), LocalPt(c, ang, -0.3f * s, 0.85f * s), LocalPt(c, ang, 0.3f * s, 0.85f * s), col);
+}
+
+static void DrawHeartHazard(const Hazard* h) {
+	float s = 13.0f + 2.5f * sinf(h->t * 14.0f) + 4.0f * (h->t / HEART_FUSE);
+	float a = Blink(h->t, HEART_FUSE) ? 1.0f : 0.3f;
+	DrawHeartShape(h->pos, s + 3, Fade(WHITE, a * 0.6f));
+	DrawHeartShape(h->pos, s, Fade(HEART_COLOR, a));
+}
+
+static void DrawSpadeLaser(const Battle* b, const Hazard* h) {
+	bool hurts;
+	float w = SpadeLaserWidth(h, &hurts);
+	Vector2 end = SpadeLaserEnd(h);
+
+	if (h->t < SPADE_APPEAR) {
+		DrawLineEx(h->pos, end, 2, Fade(SPADE_COLOR, Blink(h->t, SPADE_APPEAR) ? 0.45f : 0.15f));
+	}
+	if (w <= 0) { return; }
+	if (hurts) { w += sinf(b->time * 60.0f) * 2.0f; }
+	DrawLineEx(h->pos, end, w, SPADE_COLOR);
+	DrawLineEx(h->pos, end, w * 0.45f, WHITE);
+}
+
+static void DrawSpadeBody(const Hazard* h) {
+	float s = 16.0f * Clampf(h->t / 0.2f, 0, 1);
+	float t0 = SPADE_APPEAR, t1 = t0 + SPADE_OPEN, t2 = t1 + SPADE_FIRE;
+	float maxOpen = s * 0.45f;
+	float open = 0, alpha = 1;
+
+	if (h->t < t0) { alpha = Blink(h->t, t0) ? 1.0f : 0.45f; }
+	else if (h->t < t1) { open = maxOpen * (h->t - t0) / SPADE_OPEN; }
+	else if (h->t < t2) { open = maxOpen; }
+	else {
+		float k = Clampf((h->t - t2) / SPADE_CLOSE, 0, 1);
+		open = maxOpen * (1.0f - k);
+		alpha = 1.0f - k;
+	}
+
+	float ang = h->dir + PI / 2;
+	DrawSpadeHalf(h->pos, s, ang, -1, open, Fade(SPADE_COLOR, alpha));
+	DrawSpadeHalf(h->pos, s, ang, 1, open, Fade(SPADE_COLOR, alpha));
+}
+
+static void DrawClubHazard(const Hazard* h) {
+	float s = 14.0f * Clampf(h->t / 0.15f, 0, 1);
+	float bodyA = h->t < CLUB_APPEAR ? (Blink(h->t, CLUB_APPEAR) ? 1.0f : 0.45f) : 1.0f;
+
+	ClubRods r = ClubGeometry(h);
+	if (h->t >= CLUB_HIT_T) { bodyA = r.alpha; }
+
+	for (int k = 0; k < r.count; k++) {
+		Color c = Fade((Color){210, 255, 220, 255}, r.alpha);
+		DrawLineEx(r.from[k], r.to[k], r.width, c);
+		DrawCircleV(r.to[k], r.width * 0.5f, c);
+	}
+	DrawClubShape(h->pos, s, h->dir + PI / 2, Fade(CLUB_COLOR, bodyA));
+}
+
+static void DrawDiamondHazard(const Hazard* h) {
+	float s = 14.0f + 2.0f * sinf(h->t * 16.0f);
+	float a = Blink(h->t, DIAMOND_FUSE) ? 1.0f : 0.3f;
+	DrawDiamondShape(h->pos, s + 3, Fade(WHITE, a * 0.6f));
+	DrawDiamondShape(h->pos, s, Fade(DIAMOND_COLOR, a));
+}
+
+static void DrawPawWarning(const Battle* b, const Hazard* h) {
+	bool on = (int)(b->time * 8.0f) % 2 == 0;
+	DrawRectangleRec(h->area, Fade(RED, on ? 0.28f : 0.14f));
+	DrawRectangleLinesEx(h->area, 3, Fade(RED, on ? 1.0f : 0.5f));
+	const char* txt = "!!!!";
+	int fs = 48;
+	int tw = MeasureText(txt, fs);
+	DrawText(txt, (int)(h->area.x + h->area.width / 2) - tw / 2, (int)(h->area.y + h->area.height / 2) - fs / 2, fs, on ? YELLOW : RED);
+}
+
+static void DrawPaw(const Hazard* h, float k) {
+	Vector2 fwd = PawForward(h->side);
+	Vector2 perp = {-fwd.y, fwd.x};
+	bool horiz = h->side <= 1;
+	float depth = horiz ? h->area.width : h->area.height;
+	float edgeLen = horiz ? h->area.height : h->area.width;
+
+	Vector2 back = {h->area.x + h->area.width / 2, h->area.y + h->area.height / 2};
+	back.x -= fwd.x * depth / 2;
+	back.y -= fwd.y * depth / 2;
+	float slide = (1.0f - k) * depth * 1.2f;
+	back.x -= fwd.x * slide;
+	back.y -= fwd.y * slide;
+
+	float toeR = fminf(edgeLen * 0.11f, depth * 0.22f);
+	float toeLine = depth - toeR * 1.7f;
+	int toes = edgeLen > 250 ? 6 : 4;
+
+	Color scale = {120, 25, 45, 255};
+	Color dark = {80, 15, 30, 255};
+	Color claw = {245, 235, 210, 255};
+
+	Vector2 p0 = {back.x - perp.x * edgeLen * 0.48f, back.y - perp.y * edgeLen * 0.48f};
+	Vector2 p1 = {back.x + perp.x * edgeLen * 0.48f + fwd.x * toeLine, back.y + perp.y * edgeLen * 0.48f + fwd.y * toeLine};
+	Rectangle palm = {fminf(p0.x, p1.x), fminf(p0.y, p1.y), fabsf(p1.x - p0.x), fabsf(p1.y - p0.y)};
+	DrawRectangleRounded(palm, 0.35f, 8, scale);
+
+	for (int i = 0; i < 5; i++) {
+		for (int j = 1; j < 4; j++) {
+			float u = (i + 0.5f) / 5.0f - 0.5f;
+			float v = toeLine * j / 4.0f;
+			Vector2 sc = {back.x + perp.x * edgeLen * 0.85f * u + fwd.x * v, back.y + perp.y * edgeLen * 0.85f * u + fwd.y * v};
+			DrawCircleV(sc, toeR * 0.35f, dark);
+		}
+	}
+
+	for (int i = 0; i < toes; i++) {
+		float u = 0.12f + 0.76f * i / (toes - 1) - 0.5f;
+		Vector2 tc = {back.x + perp.x * edgeLen * u + fwd.x * toeLine, back.y + perp.y * edgeLen * u + fwd.y * toeLine};
+		DrawCircleV(tc, toeR, scale);
+		DrawCircleV(tc, toeR * 0.55f, dark);
+
+		Vector2 tip = {tc.x + fwd.x * toeR * 1.65f, tc.y + fwd.y * toeR * 1.65f};
+		Vector2 bl = {tc.x + fwd.x * toeR * 0.5f + perp.x * toeR * 0.38f, tc.y + fwd.y * toeR * 0.5f + perp.y * toeR * 0.38f};
+		Vector2 br = {tc.x + fwd.x * toeR * 0.5f - perp.x * toeR * 0.38f, tc.y + fwd.y * toeR * 0.5f - perp.y * toeR * 0.38f};
+		Tri(tip, bl, br, claw);
+	}
+}
+
+static void DrawHazards(const Battle* b) {
+	Rectangle box = BulletBox();
+
+	BeginScissorMode((int)box.x + 5, (int)box.y + 5, (int)box.width - 10, (int)box.height - 10);
+	for (int i = 0; i < MAX_HAZARDS; i++) {
+		const Hazard* h = &b->hazards[i];
+		switch (h->kind) {
+		case HZ_PAW: {
+			bool hurts;
+			float k = PawSlide(h, &hurts);
+			if (h->t < PAW_WARN) { DrawPawWarning(b, h); }
+			else if (k > 0) { DrawPaw(h, k); }
+			break;
+		}
+		case HZ_SPADE:   DrawSpadeLaser(b, h); break;
+		case HZ_CLUB:    DrawClubHazard(h); break;
+		case HZ_HEART:   DrawHeartHazard(h); break;
+		case HZ_DIAMOND: DrawDiamondHazard(h); break;
+		default: break;
+		}
+	}
+	EndScissorMode();
+
+	for (int i = 0; i < MAX_HAZARDS; i++) {
+		if (b->hazards[i].kind == HZ_SPADE) { DrawSpadeBody(&b->hazards[i]); }
+	}
+}
+
 static void DrawBullets(const Battle* b) {
 	for (int i = 0; i < MAX_BULLETS; i++) {
 		const Bullet* bl = &b->bullets[i];
 		if (!bl->active) { continue; }
-		Color outer = bl->r >= 11 ? (Color){255, 150, 40, 255} : (Color){255, 70, 90, 255};
-		DrawCircleV(bl->pos, bl->r, outer);
-		DrawCircleV(bl->pos, bl->r * 0.5f, WHITE);
+		switch (bl->shape) {
+		case BULLET_DIAMOND:
+			DrawDiamondShape(bl->pos, bl->r, DIAMOND_COLOR);
+			DrawDiamondShape(bl->pos, bl->r * 0.45f, WHITE);
+			break;
+		case BULLET_HEART:
+			DrawCircleV(bl->pos, bl->r, HEART_COLOR);
+			DrawCircleV(bl->pos, bl->r * 0.5f, WHITE);
+			break;
+		default: {
+			Color outer = bl->r >= 11 ? (Color){255, 150, 40, 255} : (Color){255, 70, 90, 255};
+			DrawCircleV(bl->pos, bl->r, outer);
+			DrawCircleV(bl->pos, bl->r * 0.5f, WHITE);
+			break;
+		}
+		}
 	}
 }
 
@@ -768,6 +1342,7 @@ static void DrawBoxContents(const Battle* b) {
 		DrawBubble(b);
 		break;
 	case B_ENEMY_ATTACK: {
+		DrawHazards(b);
 		DrawBullets(b);
 		bool blink = b->invuln > 0 && (int)(b->time * 20.0f) % 2 == 0;
 		if (!blink) { Encounter_DrawSoul(b->soul, RED); }
