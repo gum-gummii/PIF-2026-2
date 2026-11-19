@@ -8,7 +8,8 @@
 #define BUTTON_COUNT   5
 #define ACT_COUNT      (ENEMY_ACTS + 2)
 #define ITEM_SLOTS     3
-#define MAX_BULLETS    128
+#define MAX_BULLETS    256
+#define MAX_HAZARDS    24
 #define MAX_SHARDS     8
 
 typedef enum {
@@ -43,7 +44,33 @@ typedef struct {
 	float r;
 	int dmg;
 	bool grazed;
+	int shape;
 } Bullet;
+
+typedef enum {
+	BULLET_ROUND,
+	BULLET_HEART,
+	BULLET_DIAMOND
+} BulletShape;
+
+typedef enum {
+	HZ_NONE,
+	HZ_HEART,   // atk1
+	HZ_SPADE,   // atk2
+	HZ_CLUB,    // atk3
+	HZ_DIAMOND, // atk4
+	HZ_PAW      // atk5
+} HazardKind;
+
+typedef struct {
+	HazardKind kind;
+	Vector2 pos;
+	float t;
+	float dir;
+	float len;
+	Rectangle area;
+	int side;
+} Hazard;
 
 typedef struct {
 	const char* name;
@@ -94,6 +121,8 @@ typedef struct {
 	BulletPattern pattern;
 	float spawnT;
 	Bullet bullets[MAX_BULLETS];
+	Hazard hazards[MAX_HAZARDS];
+	int lastSide;
 
 	Vector2 soul;
 	float invuln;

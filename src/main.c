@@ -13,6 +13,7 @@
 #include <progression.h>
 #include <scene_overlay.h>
 #include <door.h>
+#include <cutscene.h>
 #include <time.h>
 
 
@@ -403,6 +404,9 @@ int main() {
 	InitCasinoDoor(&casinoDoor);
 	bool viaDoor = false;
 
+	const EnemyDef* cutsceneBattle = NULL;
+	bool bossCutsceneSeen = false;
+
 	while (!WindowShouldClose()) {
 		WaitTime(1.0 / 60.0);
 		clockTimestampMs += (1.0 / 60.0);
@@ -413,6 +417,14 @@ int main() {
 
 		Encounter_Update(&encounter, 1.0f / 60.0f);
 		bool inIntro = Encounter_IsActive(&encounter);
+
+		Cutscene_Update(1.0f / 60.0f);
+		bool inCutscene = Cutscene_IsActive();
+		if (!inCutscene && cutsceneBattle != NULL) {
+			Battle_Start(&battle, cutsceneBattle, plr->texture, (Vector2){plrFrame.width, plrFrame.height});
+			cutsceneBattle = NULL;
+		}
+
 		bool inBattle = Battle_IsActive(&battle) && !inIntro;
 		StageContext stage = {&minions, &score};
 
@@ -422,12 +434,12 @@ int main() {
 			inBattle = Battle_IsActive(&battle);
 		}
 
-		if (!inBattle && !inIntro) {
+		if (!inBattle && !inIntro && !inCutscene) {
 			if (IsKeyPressed(KEY_Q)) { scenario -= 1; }
 			if (IsKeyPressed(KEY_E)) { scenario += 1; printf("NEXT"); }
 		}
 
-		if (IsKeyPressed(KEY_SPACE) && !inIntro && !inBattle) {
+		if (IsKeyPressed(KEY_SPACE) && !inIntro && !inBattle && !inCutscene) {
 			GameData->spiritMode = !GameData->spiritMode;
 
 			if (GameData->spiritMode) {
@@ -441,7 +453,7 @@ int main() {
 		ClearBackground(DARKGREEN);
 
 		// reinicia a luta
-		if ((IsKeyPressed(KEY_R) && !inBattle && !inIntro) || Battle_ConsumeRestart(&battle)) {
+		if ((IsKeyPressed(KEY_R) && !inBattle && !inIntro && !inCutscene) || Battle_ConsumeRestart(&battle)) {
 			plr->hp = PLAYER_MAX_HP;
 			Score_Save(&score);
 			Score_Reset(&score);
@@ -469,12 +481,16 @@ int main() {
 			if (scenario == SCENARIO_BOSS_ROOM && !progress.cleared) { Minions_SpawnBoss(&minions, GetBossRoomBossPosition()); }
 			Battle_Stop(&battle);
 			Encounter_Stop(&encounter);
+			Cutscene_Stop();
+			cutsceneBattle = NULL;
 			viaDoor = false;
 		}
 
 
 
-		if (inBattle) {
+		if (inCutscene) {
+			Cutscene_Draw();
+		} else if (inBattle) {
 			Battle_Draw(&battle, plr->hp);
 		} else if (GameData->spiritMode) {
 			BeginMode2D(camera);
@@ -520,8 +536,15 @@ int main() {
 				int touched = Minions_Update(&minions, 1.0f / 60.0f, input, &score, worldSize, Assets);
 				Rectangle feet = GetPlayerCollider(plr->position, plrFrame);
 				if (touched >= 0) {
+					const EnemyDef* def = Enemy_Get(Minions_EnemyOf(&minions, touched));
 					Progression_BeginFight(&progress, touched);
-					StartEncounter(&battle, &encounter, Enemy_Get(Minions_EnemyOf(&minions, touched)), &camera, plr, plrFrame);
+					if (def->isBoss && !bossCutsceneSeen) {
+						bossCutsceneSeen = true;
+						cutsceneBattle = def;
+						Cutscene_StartBoss(plr->texture, plrFrame);
+					} else {
+						StartEncounter(&battle, &encounter, def, &camera, plr, plrFrame);
+					}
 				} else if (scenario == SCENARIO_ENTRANCE) {
 					Door_Update(&casinoDoor, 1.0f / 60.0f, progress.doorUnlocked, feet);
 					if (Door_IsEntering(&casinoDoor, feet)) { scenario = SCENARIO_BOSS_ROOM; viaDoor = true; }
@@ -561,15 +584,15 @@ int main() {
 		}
 
 		Score_Update(&score, 1.0f / 60.0f);
-		if (!inBattle && !inIntro) {
+		if (!inBattle && !inIntro && !inCutscene) {
 			Score_DrawHud(&score);
 			Progression_DrawHud(&progress);
 		}
 
 		if (inIntro) { Encounter_Draw(&encounter); }
 
-		DrawText("Press [P] to show/hide debug info!", 15, 20, 30, WHITE);
-		if (GameData->debugMode) {
+		if (!inCutscene) { DrawText("Press [P] to show/hide debug info!", 15, 20, 30, WHITE); }
+		if (GameData->debugMode && !inCutscene) {
 			DrawText(TextFormat("HP: %d", plr->hp), 15, 70, 20, RED);
 			DrawText(TextFormat("Loaded Hitboxes: %d", Assets->GetHitboxAmount(Assets)), 15, 90, 20, BLUE);
 			DrawText(TextFormat("Scenario: %d", scenario), 15, 110, 20, LIGHTGRAY);
@@ -584,6 +607,7 @@ int main() {
 	Score_Save(&score);
 	for (int i = 0; i < backgroundCount; i++) { UnloadTexture(scenarioBackgrounds[i].texture); }
 	SceneOverlay_Unload(&entranceFountain);
+	Cutscene_Unload();
 	GameData->UnloadCharacter(GameData, plr);
 	CloseWindow();
 
