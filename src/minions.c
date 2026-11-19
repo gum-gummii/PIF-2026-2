@@ -1,4 +1,5 @@
 #include <minions.h>
+#include <sprites.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,11 +7,10 @@
 #define ATTACK_DURATION   0.15f
 #define ATTACK_COOLDOWN   0.30f
 #define ATTACK_REACH      95.0f
-#define CONTACT_DAMAGE    8
-#define CONTACT_COOLDOWN  0.8f
 #define RESPAWN_TIME      4.0f
 #define AGGRO_RANGE       330.0f
 #define MIN_SPAWN_DIST    300.0f
+#define ALERT_TIME        0.6f
 
 typedef struct {
 	float size;
@@ -18,12 +18,15 @@ typedef struct {
 	float speed;
 	int points;
 	Color color;
+	EnemyType enemy;
+	bool boss;
 } MinionStats;
 
 static const MinionStats STATS[MINION_KIND_COUNT] = {
-	[MINION_SLIME] = {34, 2,  70, 10, {90, 200, 90, 255}},
-	[MINION_BAT]   = {26, 1, 140, 15, {150, 80, 200, 255}},
-	[MINION_TANK]  = {44, 4,  50, 30, {230, 130, 40, 255}},
+	[MINION_SLIME] = {34, 2,  70, 10, {90, 200, 90, 255},  ENEMY_GOSMA,     false},
+	[MINION_BAT]   = {26, 1, 140, 15, {150, 80, 200, 255}, ENEMY_MORCEGO,   false},
+	[MINION_TANK]  = {44, 4,  50, 30, {230, 130, 40, 255}, ENEMY_TANQUE,    false},
+	[MINION_BOSS]  = {60, 1,  95,  0, {130, 70, 190, 255}, ENEMY_DEMONINHO, true},
 };
 
 static float Rand01(void) { return (float)GetRandomValue(0, 10000) / 10000.0f; }
@@ -62,17 +65,11 @@ static MinionKind RandomKind(void) {
 	return MINION_TANK;
 }
 
-static void ReviveMinion(Minion* m, Vector2 worldSize, Rectangle plrBody, LoadedAssetsClass* Assets) {
-	MinionKind kind = RandomKind();
+static void SetupMinion(Minion* m, MinionKind kind, Vector2 pos) {
 	const MinionStats* st = &STATS[kind];
-	Vector2 pos;
-	if (!FindFreeSpot(&pos, st->size, worldSize, plrBody, Assets)) {
-		m->respawnT = 1.0f;
-		return;
-	}
-
 	memset(m, 0, sizeof(*m));
 	m->alive = true;
+	m->permanent = st->boss;
 	m->kind = kind;
 	m->pos = pos;
 	m->size = st->size;
@@ -80,6 +77,16 @@ static void ReviveMinion(Minion* m, Vector2 worldSize, Rectangle plrBody, Loaded
 	m->maxHp = st->hp;
 	m->bob = Rand01() * 6.28f;
 	m->lastSwingHit = -1;
+}
+
+static void ReviveMinion(Minion* m, Vector2 worldSize, Rectangle plrBody, LoadedAssetsClass* Assets) {
+	MinionKind kind = RandomKind();
+	Vector2 pos;
+	if (!FindFreeSpot(&pos, STATS[kind].size, worldSize, plrBody, Assets)) {
+		m->respawnT = 1.0f;
+		return;
+	}
+	SetupMinion(m, kind, pos);
 }
 
 void Minions_Clear(MinionField* f) {
@@ -94,6 +101,35 @@ void Minions_Spawn(MinionField* f, int count, Vector2 worldSize, Rectangle plrBo
 	for (int i = 0; i < count; i++) {
 		ReviveMinion(&f->m[i], worldSize, plrBody, Assets);
 	}
+}
+
+int Minions_SpawnBoss(MinionField* f, Vector2 worldSize, Rectangle plrBody, LoadedAssetsClass* Assets) {
+	if (f->count >= MAX_MINIONS) { return -1; }
+
+	Vector2 pos;
+	if (!FindFreeSpot(&pos, STATS[MINION_BOSS].size, worldSize, plrBody, Assets)) { return -1; }
+
+	int index = f->count++;
+	SetupMinion(&f->m[index], MINION_BOSS, pos);
+	f->m[index].alertT = ALERT_TIME;
+	return index;
+}
+
+void Minions_Remove(MinionField* f, int index) {
+	if (index < 0 || index >= f->count) { return; }
+	Minion* m = &f->m[index];
+	m->alive = false;
+	m->chasing = false;
+	m->deathT = 0.3f;
+	m->respawnT = RESPAWN_TIME + Rand01() * 2.0f;
+}
+
+EnemyType Minions_EnemyOf(const MinionField* f, int index) {
+	return STATS[f->m[index].kind].enemy;
+}
+
+Vector2 Minions_Position(const MinionField* f, int index) {
+	return f->m[index].pos;
 }
 
 static Rectangle BuildAttackRect(Rectangle plrBody, Vector2 dir) {
@@ -118,117 +154,134 @@ static void TryMove(Minion* m, Vector2 delta, Vector2 worldSize, LoadedAssetsCla
 	else { m->wanderDir.y = -m->wanderDir.y; }
 }
 
-void Minions_Update(MinionField* f, float dt, Rectangle plrBody, Vector2 facing, bool attackPressed,
-                    int* plrHp, Score* score, Vector2 worldSize, LoadedAssetsClass* Assets) {
-	bool plrAlive = *plrHp > 0;
-	Vector2 plrC = RectCenter(plrBody);
+static void UpdateSwing(MinionField* f, float dt, MinionInput in) {
+	if (f->attackCd > 0) { f->attackCd -= dt; }
+	if (f->attackT > 0)  { f->attackT -= dt; }
 
-	if (f->attackCd > 0)   { f->attackCd -= dt; }
-	if (f->attackT > 0)    { f->attackT -= dt; }
-	if (f->contactCd > 0)  { f->contactCd -= dt; }
-	if (f->hurtFlash > 0)  { f->hurtFlash -= dt; }
-
-	if (attackPressed && plrAlive && f->attackCd <= 0) {
+	if (in.attackPressed && in.plrAlive && f->attackCd <= 0) {
 		f->attackT = ATTACK_DURATION;
 		f->attackCd = ATTACK_COOLDOWN;
-		f->attackDir = (facing.x == 0 && facing.y == 0) ? (Vector2){0, 1} : Norm(facing);
+		f->attackDir = (in.facing.x == 0 && in.facing.y == 0) ? (Vector2){0, 1} : Norm(in.facing);
 		f->swingId++;
 	}
-	if (f->attackT > 0) { f->attackRect = BuildAttackRect(plrBody, f->attackDir); }
+	if (f->attackT > 0) { f->attackRect = BuildAttackRect(in.plrBody, f->attackDir); }
+}
+
+static Vector2 ChooseDirection(Minion* m, float dt, Vector2 plrC, bool plrAlive) {
+	Vector2 toPlr = {plrC.x - m->pos.x, plrC.y - m->pos.y};
+	float dist = sqrtf(toPlr.x * toPlr.x + toPlr.y * toPlr.y);
+	bool chase = plrAlive && dist < AGGRO_RANGE;
+
+	if (chase && !m->chasing) { m->alertT = ALERT_TIME; }
+	m->chasing = chase;
+	if (chase) { return Norm(toPlr); }
+
+	m->wanderT -= dt;
+	if (m->wanderT <= 0) {
+		m->wanderT = 1.0f + Rand01() * 2.0f;
+		float a = Rand01() * 6.2831f;
+		m->wanderDir = (Rand01() < 0.3f) ? (Vector2){0, 0} : (Vector2){cosf(a), sinf(a)};
+	}
+	return m->wanderDir;
+}
+
+static void ApplySwingHit(MinionField* f, Minion* m, Vector2 plrC, Score* score) {
+	const MinionStats* st = &STATS[m->kind];
+	if (st->boss || f->attackT <= 0 || m->lastSwingHit == f->swingId) { return; }
+	if (!CheckCollisionRecs(f->attackRect, MinionRect(m->pos, m->size))) { return; }
+
+	m->lastSwingHit = f->swingId;
+	m->hp--;
+	m->hitFlash = 0.18f;
+	Vector2 kb = Norm((Vector2){m->pos.x - plrC.x, m->pos.y - plrC.y});
+	float force = (m->kind == MINION_TANK) ? 5.0f : 10.0f;
+	m->knock = (Vector2){kb.x * force, kb.y * force};
+
+	if (m->hp > 0) { return; }
+
+	m->alive = false;
+	m->chasing = false;
+	m->deathT = 0.3f;
+	m->respawnT = RESPAWN_TIME + Rand01() * 2.0f;
+	if (score != NULL) { Score_AddKill(score, st->points, (Vector2){m->pos.x, m->pos.y - m->size}); }
+}
+
+static void UpdateDead(Minion* m, float dt, Vector2 worldSize, Rectangle plrBody, LoadedAssetsClass* Assets) {
+	if (m->deathT > 0) { m->deathT -= dt; }
+	if (m->permanent) { return; }
+	m->respawnT -= dt;
+	if (m->respawnT <= 0) { ReviveMinion(m, worldSize, plrBody, Assets); }
+}
+
+int Minions_Update(MinionField* f, float dt, MinionInput in, Score* score, Vector2 worldSize, LoadedAssetsClass* Assets) {
+	Vector2 plrC = RectCenter(in.plrBody);
+	int touched = -1;
+
+	UpdateSwing(f, dt, in);
 
 	for (int i = 0; i < f->count; i++) {
 		Minion* m = &f->m[i];
 
 		if (!m->alive) {
-			if (m->deathT > 0) { m->deathT -= dt; }
-			m->respawnT -= dt;
-			if (m->respawnT <= 0) { ReviveMinion(m, worldSize, plrBody, Assets); }
+			UpdateDead(m, dt, worldSize, in.plrBody, Assets);
 			continue;
 		}
 
 		const MinionStats* st = &STATS[m->kind];
 		m->bob += dt * (m->kind == MINION_BAT ? 14.0f : 6.0f);
 		if (m->hitFlash > 0) { m->hitFlash -= dt; }
+		if (m->alertT > 0) { m->alertT -= dt; }
 
-		Vector2 toPlr = {plrC.x - m->pos.x, plrC.y - m->pos.y};
-		float dist = sqrtf(toPlr.x * toPlr.x + toPlr.y * toPlr.y);
-		Vector2 dir;
-		if (plrAlive && dist < AGGRO_RANGE) {
-			dir = Norm(toPlr);
-		} else {
-			m->wanderT -= dt;
-			if (m->wanderT <= 0) {
-				m->wanderT = 1.0f + Rand01() * 2.0f;
-				float a = Rand01() * 6.2831f;
-				m->wanderDir = (Rand01() < 0.3f) ? (Vector2){0, 0} : (Vector2){cosf(a), sinf(a)};
-			}
-			dir = m->wanderDir;
-		}
-
+		Vector2 dir = ChooseDirection(m, dt, plrC, in.plrAlive);
 		float speed = st->speed * (m->hitFlash > 0 ? 0.3f : 1.0f);
 		Vector2 delta = {dir.x * speed * dt + m->knock.x, dir.y * speed * dt + m->knock.y};
 		TryMove(m, delta, worldSize, Assets);
 		m->knock.x *= 0.82f;
 		m->knock.y *= 0.82f;
 
-		Rectangle body = MinionRect(m->pos, m->size);
+		ApplySwingHit(f, m, plrC, score);
+		if (!m->alive) { continue; }
 
-		if (f->attackT > 0 && m->lastSwingHit != f->swingId && CheckCollisionRecs(f->attackRect, body)) {
-			m->lastSwingHit = f->swingId;
-			m->hp--;
-			m->hitFlash = 0.18f;
-			Vector2 kb = Norm((Vector2){m->pos.x - plrC.x, m->pos.y - plrC.y});
-			float force = (m->kind == MINION_TANK) ? 5.0f : 10.0f;
-			m->knock = (Vector2){kb.x * force, kb.y * force};
+		bool touching = CheckCollisionRecs(MinionRect(m->pos, m->size), in.plrBody);
+		if (touched < 0 && in.allowEncounter && touching) { touched = i; }
+	}
 
-			if (m->hp <= 0) {
-				m->alive = false;
-				m->deathT = 0.3f;
-				m->respawnT = RESPAWN_TIME + Rand01() * 2.0f;
-				if (score != NULL) { Score_AddKill(score, st->points, (Vector2){m->pos.x, m->pos.y - m->size}); }
-				continue;
-			}
+	return touched;
+}
+
+static void DrawMinionBody(const Minion* m) {
+	Color c = (m->hitFlash > 0) ? WHITE : STATS[m->kind].color;
+
+	switch (m->kind) {
+		case MINION_SLIME: Sprite_DrawSlime(m->pos, m->size, m->bob, c, 1.0f); break;
+		case MINION_BAT:   Sprite_DrawBat(m->pos, m->size, m->bob, c, 1.0f);   break;
+		case MINION_TANK:  Sprite_DrawTank(m->pos, m->size, m->bob, c, 1.0f);  break;
+		case MINION_BOSS: {
+			float pulse = 0.5f + 0.5f * sinf(m->bob * 0.8f);
+			DrawCircleV(m->pos, m->size * 0.85f, Fade(RED, 0.12f + 0.1f * pulse));
+			Vector2 c2 = {m->pos.x, m->pos.y + sinf(m->bob) * 2};
+			Sprite_DrawDemon(c2, m->size, Sprite_DemonPalette(), 1.0f);
+			break;
 		}
-
-		if (plrAlive && f->contactCd <= 0 && CheckCollisionRecs(body, plrBody)) {
-			*plrHp -= CONTACT_DAMAGE;
-			if (*plrHp < 0) { *plrHp = 0; }
-			f->contactCd = CONTACT_COOLDOWN;
-			f->hurtFlash = 0.25f;
-			Vector2 kb = Norm((Vector2){m->pos.x - plrC.x, m->pos.y - plrC.y});
-			m->knock = (Vector2){kb.x * 8, kb.y * 8};
-		}
+		default: break;
 	}
 }
 
-static void DrawSlime(Vector2 p, float s, float bob, Color c) {
-	float squish = sinf(bob) * 0.12f;
-	float w = s * (1.0f + squish), h = s * 0.8f * (1.0f - squish);
-	DrawEllipse((int)p.x, (int)(p.y + s / 2 - 2), s * 0.5f, s * 0.15f, Fade(BLACK, 0.3f));
-	DrawEllipse((int)p.x, (int)(p.y + s / 2 - h / 2), w / 2, h / 2, c);
-	DrawCircle((int)(p.x - s * 0.18f), (int)(p.y + s / 2 - h * 0.6f), s * 0.08f, BLACK);
-	DrawCircle((int)(p.x + s * 0.18f), (int)(p.y + s / 2 - h * 0.6f), s * 0.08f, BLACK);
+static void DrawAlert(const Minion* m) {
+	if (m->alertT <= 0) { return; }
+	float k = m->alertT / ALERT_TIME;
+	int fs = 34;
+	int x = (int)m->pos.x - MeasureText("!", fs) / 2;
+	int y = (int)(m->pos.y - m->size / 2 - 44 - (1.0f - k) * 6);
+	DrawText("!", x + 2, y + 2, fs, Fade(BLACK, k));
+	DrawText("!", x, y, fs, Fade(RED, k));
 }
 
-static void DrawBat(Vector2 p, float s, float bob, Color c) {
-	float flap = sinf(bob) * s * 0.35f;
-	float y = p.y + sinf(bob * 0.3f) * 4;
-	DrawEllipse((int)p.x, (int)(p.y + s * 0.8f), s * 0.35f, s * 0.1f, Fade(BLACK, 0.25f));
-	DrawTriangle((Vector2){p.x - s * 0.2f, y}, (Vector2){p.x - s * 0.8f, y - flap}, (Vector2){p.x - s * 0.25f, y + s * 0.2f}, c);
-	DrawTriangle((Vector2){p.x + s * 0.2f, y}, (Vector2){p.x + s * 0.25f, y + s * 0.2f}, (Vector2){p.x + s * 0.8f, y - flap}, c);
-	DrawCircle((int)p.x, (int)y, s * 0.32f, c);
-	DrawCircle((int)(p.x - s * 0.12f), (int)(y - s * 0.05f), s * 0.07f, YELLOW);
-	DrawCircle((int)(p.x + s * 0.12f), (int)(y - s * 0.05f), s * 0.07f, YELLOW);
-}
-
-static void DrawTank(Vector2 p, float s, float bob, Color c) {
-	float step = fabsf(sinf(bob)) * 3;
-	Rectangle r = {p.x - s / 2, p.y - s / 2 - step, s, s};
-	DrawEllipse((int)p.x, (int)(p.y + s / 2), s * 0.55f, s * 0.15f, Fade(BLACK, 0.3f));
-	DrawRectangleRounded(r, 0.35f, 6, c);
-	DrawRectangleRoundedLinesEx(r, 0.35f, 6, 2, Fade(BLACK, 0.5f));
-	DrawRectangle((int)(p.x - s * 0.28f), (int)(p.y - s * 0.15f - step), (int)(s * 0.16f), (int)(s * 0.08f), BLACK);
-	DrawRectangle((int)(p.x + s * 0.12f), (int)(p.y - s * 0.15f - step), (int)(s * 0.16f), (int)(s * 0.08f), BLACK);
+static void DrawDeath(const Minion* m) {
+	if (m->deathT <= 0) { return; }
+	float k = 1.0f - m->deathT / 0.3f;
+	DrawCircleLines((int)m->pos.x, (int)m->pos.y, m->size * (0.5f + k), Fade(WHITE, 1.0f - k));
+	DrawCircle((int)m->pos.x, (int)m->pos.y, m->size * 0.4f * (1.0f - k), Fade(STATS[m->kind].color, 1.0f - k));
 }
 
 void Minions_Draw(const MinionField* f) {
@@ -236,21 +289,12 @@ void Minions_Draw(const MinionField* f) {
 		const Minion* m = &f->m[i];
 
 		if (!m->alive) {
-			if (m->deathT > 0) {
-				float k = 1.0f - m->deathT / 0.3f;
-				DrawCircleLines((int)m->pos.x, (int)m->pos.y, m->size * (0.5f + k), Fade(WHITE, 1.0f - k));
-				DrawCircle((int)m->pos.x, (int)m->pos.y, m->size * 0.4f * (1.0f - k), Fade(STATS[m->kind].color, 1.0f - k));
-			}
+			DrawDeath(m);
 			continue;
 		}
 
-		Color c = (m->hitFlash > 0) ? WHITE : STATS[m->kind].color;
-		switch (m->kind) {
-			case MINION_SLIME: DrawSlime(m->pos, m->size, m->bob, c); break;
-			case MINION_BAT:   DrawBat(m->pos, m->size, m->bob, c);   break;
-			case MINION_TANK:  DrawTank(m->pos, m->size, m->bob, c);  break;
-			default: break;
-		}
+		DrawMinionBody(m);
+		DrawAlert(m);
 
 		if (m->hp < m->maxHp) {
 			float w = m->size;
@@ -267,14 +311,4 @@ void Minions_Draw(const MinionField* f) {
 		float start = base - 70 + k * 40;
 		DrawRing(c, ATTACK_REACH * 0.25f, ATTACK_REACH * 0.5f, start, start + 100, 12, Fade(WHITE, 0.85f * (1.0f - k)));
 	}
-}
-
-void Minions_DrawHurtOverlay(const MinionField* f) {
-	if (f->hurtFlash > 0) {
-		DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(RED, 0.3f * f->hurtFlash / 0.25f));
-	}
-}
-
-bool Minions_PlayerBlink(const MinionField* f) {
-	return f->contactCd > 0 && ((int)(f->contactCd * 15) % 2) == 0;
 }

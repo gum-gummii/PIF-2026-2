@@ -4,6 +4,7 @@
 #include <raylib.h>
 #include <classes.h>
 #include <score.h>
+#include <enemies.h>
 
 #define MAX_MINIONS 16
 
@@ -11,16 +12,20 @@ typedef enum {
 	MINION_SLIME,
 	MINION_BAT,
 	MINION_TANK,
+	MINION_BOSS,
 	MINION_KIND_COUNT
 } MinionKind;
 
 typedef struct {
 	bool alive;
+	bool permanent;
+	bool chasing;
 	MinionKind kind;
 	Vector2 pos;
 	Vector2 knock;
 	Vector2 wanderDir;
 	float wanderT;
+	float alertT;
 	float size;
 	int hp;
 	int maxHp;
@@ -40,19 +45,26 @@ typedef struct {
 	Vector2 attackDir;
 	int swingId;
 	Rectangle attackRect;
-
-	float contactCd;
-	float hurtFlash;
 } MinionField;
+
+typedef struct {
+	Rectangle plrBody;
+	Vector2 facing;
+	bool attackPressed;
+	bool plrAlive;
+	bool allowEncounter;
+} MinionInput;
 
 void Minions_Spawn(MinionField* f, int count, Vector2 worldSize, Rectangle plrBody, LoadedAssetsClass* Assets);
 void Minions_Clear(MinionField* f);
+int  Minions_SpawnBoss(MinionField* f, Vector2 worldSize, Rectangle plrBody, LoadedAssetsClass* Assets);
+void Minions_Remove(MinionField* f, int index);
 
-void Minions_Update(MinionField* f, float dt, Rectangle plrBody, Vector2 facing, bool attackPressed,
-                    int* plrHp, Score* score, Vector2 worldSize, LoadedAssetsClass* Assets);
+int Minions_Update(MinionField* f, float dt, MinionInput in, Score* score, Vector2 worldSize, LoadedAssetsClass* Assets);
+
+EnemyType Minions_EnemyOf(const MinionField* f, int index);
+Vector2   Minions_Position(const MinionField* f, int index);
 
 void Minions_Draw(const MinionField* f);
-void Minions_DrawHurtOverlay(const MinionField* f);
-bool Minions_PlayerBlink(const MinionField* f);
 
 #endif

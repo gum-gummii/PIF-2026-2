@@ -3,9 +3,10 @@
 
 #include <raylib.h>
 #include <combat.h>
+#include <enemies.h>
 
 #define BUTTON_COUNT   5
-#define ACT_COUNT      4
+#define ACT_COUNT      (ENEMY_ACTS + 2)
 #define ITEM_SLOTS     3
 #define MAX_BULLETS    128
 #define MAX_SHARDS     8
@@ -26,6 +27,14 @@ typedef enum {
 	B_LOST,
 	B_DONE
 } BattleState;
+
+typedef enum {
+	BATTLE_ONGOING,
+	BATTLE_WON,
+	BATTLE_SPARED,
+	BATTLE_FLED,
+	BATTLE_LOST
+} BattleOutcome;
 
 typedef struct {
 	bool active;
@@ -62,10 +71,11 @@ typedef struct {
 	int turn;
 	char flavor[128];
 
+	const EnemyDef* def;
 	BattleEnemy enemy;
 	float tp;
 	bool defending;
-	int outcome;
+	BattleOutcome outcome;
 	float outcomeT;
 
 	char text[192];
@@ -81,8 +91,7 @@ typedef struct {
 
 	Rectangle box;
 	char line[64];
-	int pattern;
-	int lastPattern;
+	BulletPattern pattern;
 	float spawnT;
 	Bullet bullets[MAX_BULLETS];
 
@@ -99,11 +108,13 @@ typedef struct {
 	Rectangle plrSrc;
 } Battle;
 
-void Battle_Start(Battle* b, Texture2D plrTexture, Rectangle plrSrc);
+void Battle_Start(Battle* b, const EnemyDef* def, Texture2D plrTexture, Rectangle plrSrc);
 void Battle_Stop(Battle* b);
 void Battle_Update(Battle* b, float dt, int* plrHp);
 void Battle_Draw(const Battle* b, int plrHp);
 bool Battle_IsActive(const Battle* b);
+BattleOutcome Battle_Outcome(const Battle* b);
+const EnemyDef* Battle_Enemy(const Battle* b);
 bool Battle_ConsumeRestart(Battle* b);
 
 #endif
