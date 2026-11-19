@@ -4,11 +4,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#define ENEMY_NAME        "DEMONINHO"
-#define ENEMY_GRID        12
-#define ENEMY_PIXEL       9
-#define ENEMY_SIZE        (ENEMY_GRID * ENEMY_PIXEL)
-#define ENEMY_MAX_HP      200
 #define TEXT_CPS          42.0f
 #define TP_PACIFY_COST    32.0f
 #define SOUL_SPEED        230.0f
@@ -16,38 +11,14 @@
 #define GRAZE_R           16.0f
 #define INVULN_TIME       1.0f
 #define ATTACK_TIME       1.15f
-#define ENEMY_TURN_TIME   6.3f
-#define SPAWN_STOP        5.4f
+#define SPAWN_STOP_EARLY  0.9f
 #define DIALOGUE_TIME     2.2f
 #define MENU_LOCK_START   0.3f
+#define PACIFY_INDEX      (ACT_COUNT - 1)
 
 static const char* BUTTON_LABELS[BUTTON_COUNT] = {"LUTAR", "AGIR", "ITEM", "POUPAR", "DEFENDER"};
-static const char* ACT_LABELS[ACT_COUNT] = {"Checar", "Elogiar", "Danca", "Pacificar"};
 static const char* SPARE_LABELS[2] = {"Poupar", "Fugir"};
-
-static const char* ENEMY_SPRITE[ENEMY_GRID] = {
-	"..H......H..",
-	"..HH....HH..",
-	"..PPPPPPPP..",
-	".PPPPPPPPPP.",
-	".PWEPPPPEWP.",
-	".PPPPPPPPPP.",
-	".PPMMMMMMPP.",
-	"..PPPPPPPP..",
-	".DDPPPPPPDD.",
-	".D.PPPPPP.D.",
-	"...PP..PP...",
-	"..FFF..FFF..",
-};
-
-static const char* FLAVOR_TEXTS[3] = {
-	"* Cheiro de enxofre no ar.",
-	"* O DEMONINHO range os dentes.",
-	"* Hora de decidir o que fazer.",
-};
-static const char* LINES_NORMAL[3] = {"Grrr!", "Me enfrente!", "Voce nao passa!"};
-static const char* LINES_CALM[3] = {"...ta bom.", "Ate que voce e legal.", "Hmpf."};
-static const char* LINES_ANGRY[3] = {"AGORA CHEGA!", "VOU TE QUEIMAR!", "RAAAH!"};
+static const BulletPattern ALL_PATTERNS[3] = {PATTERN_RAIN, PATTERN_SIDES, PATTERN_FAN};
 
 static bool Confirm(void) { return IsKeyPressed(KEY_Z) || IsKeyPressed(KEY_ENTER); }
 static bool Cancel(void) { return IsKeyPressed(KEY_X) || IsKeyPressed(KEY_BACKSPACE); }
@@ -72,14 +43,13 @@ static Rectangle BulletBox(void) {
 	return (Rectangle){GetScreenWidth() / 2.0f - 190, (float)GetScreenHeight() - 348, 380, 190};
 }
 
-static Vector2 EnemyPos(void) {
-	return (Vector2){GetScreenWidth() * 0.66f, 150};
+static Vector2 EnemyCenter(void) {
+	return (Vector2){GetScreenWidth() * 0.66f + 54, 204};
 }
 
-static Vector2 EnemyCenter(void) {
-	Vector2 p = EnemyPos();
-	return (Vector2){p.x + ENEMY_SIZE / 2.0f, p.y + ENEMY_SIZE / 2.0f};
-}
+static float EnemySize(const Battle* b) { return b->def->size; }
+static float EnemyTop(const Battle* b) { return EnemyCenter().y - EnemySize(b) / 2; }
+static float EnemyLeft(const Battle* b) { return EnemyCenter().x - EnemySize(b) / 2; }
 
 static Rectangle ButtonRect(int i) {
 	float w = 170, h = 44, gap = 14;
@@ -93,6 +63,12 @@ static Rectangle PanelRect(void) {
 
 static bool EnemyAngry(const Battle* b) { return b->enemy.hp < b->enemy.maxHp / 2; }
 static bool EnemySpareable(const Battle* b) { return b->enemy.mercy >= 100.0f; }
+
+static const char* ActLabel(const Battle* b, int i) {
+	if (i == 0) { return "Checar"; }
+	if (i == PACIFY_INDEX) { return "Pacificar"; }
+	return b->def->acts[i - 1].label;
+}
 
 static int ItemTypes(const Battle* b) {
 	int n = 0;
@@ -110,6 +86,18 @@ static int ItemSlot(const Battle* b, int n) {
 	return -1;
 }
 
+static int ListCount(const Battle* b) {
+	if (b->state == B_ACT_LIST) { return ACT_COUNT; }
+	if (b->state == B_ITEM_LIST) { return ItemTypes(b); }
+	if (b->state == B_SPARE_LIST) { return 2; }
+	return 1;
+}
+
+static int ScaledDamage(const Battle* b, int base) {
+	int dmg = (int)ceilf(base * b->def->damageMult);
+	return dmg < 1 ? 1 : dmg;
+}
+
 static void AddBullet(Battle* b, Vector2 pos, Vector2 vel, float r, int dmg) {
 	for (int i = 0; i < MAX_BULLETS; i++) {
 		if (b->bullets[i].active) { continue; }
@@ -118,12 +106,27 @@ static void AddBullet(Battle* b, Vector2 pos, Vector2 vel, float r, int dmg) {
 	}
 }
 
+static BulletPattern PickPattern(const Battle* b) {
+	BulletPattern options[3];
+	int n = 0;
+	for (int i = 0; i < 3; i++) {
+		if (b->def->patterns & ALL_PATTERNS[i]) { options[n++] = ALL_PATTERNS[i]; }
+	}
+	if (n == 0) { return PATTERN_RAIN; }
+	if (n == 1) { return options[0]; }
+
+	BulletPattern p = options[GetRandomValue(0, n - 1)];
+	while (p == b->pattern) { p = options[GetRandomValue(0, n - 1)]; }
+	return p;
+}
+
 static void PickFlavor(Battle* b) {
+	const EnemyDef* d = b->def;
 	const char* msg;
-	if (b->turn == 0) { msg = "* O DEMONINHO te encara com raiva."; }
-	else if (EnemySpareable(b)) { msg = "* O DEMONINHO parece pronto para ser poupado."; }
-	else if (EnemyAngry(b)) { msg = "* O DEMONINHO esta furioso!"; }
-	else { msg = FLAVOR_TEXTS[b->turn % 3]; }
+	if (b->turn == 0) { msg = d->firstFlavor; }
+	else if (EnemySpareable(b)) { msg = d->spareFlavor; }
+	else if (EnemyAngry(b)) { msg = d->angryFlavor; }
+	else { msg = d->flavor[b->turn % 3]; }
 	snprintf(b->flavor, sizeof(b->flavor), "%s", msg);
 }
 
@@ -151,7 +154,8 @@ static void GoTo(Battle* b, BattleState s) {
 		b->dmgApplied = false;
 		break;
 	case B_ENEMY_DIALOGUE: {
-		const char** set = EnemyAngry(b) ? LINES_ANGRY : (b->enemy.mercy >= 50.0f ? LINES_CALM : LINES_NORMAL);
+		const EnemyDef* d = b->def;
+		const char* const* set = EnemyAngry(b) ? d->linesAngry : (b->enemy.mercy >= 50.0f ? d->linesCalm : d->linesNormal);
 		snprintf(b->line, sizeof(b->line), "%s", set[GetRandomValue(0, 2)]);
 		break;
 	}
@@ -159,14 +163,13 @@ static void GoTo(Battle* b, BattleState s) {
 		Rectangle box = BulletBox();
 		b->soul = (Vector2){box.x + box.width / 2, box.y + box.height / 2};
 		memset(b->bullets, 0, sizeof(b->bullets));
-		b->pattern = GetRandomValue(0, 2);
-		if (b->pattern == b->lastPattern) { b->pattern = (b->pattern + 1) % 3; }
-		b->lastPattern = b->pattern;
+		b->pattern = PickPattern(b);
 		b->spawnT = 0.3f;
 		b->invuln = 0;
 		break;
 	}
 	case B_LOST:
+		b->outcome = BATTLE_LOST;
 		for (int i = 0; i < MAX_SHARDS; i++) {
 			b->shards[i] = b->soul;
 			float ang = (float)GetRandomValue(0, 628) / 100.0f;
@@ -182,22 +185,22 @@ static void GoTo(Battle* b, BattleState s) {
 	}
 }
 
-static void Finish(Battle* b, int outcome, const char* msg) {
+static void Finish(Battle* b, BattleOutcome outcome, const char* msg) {
 	b->outcome = outcome;
 	b->outcomeT = 0;
 	SetText(b, msg, B_DONE);
 }
 
-void Battle_Start(Battle* b, Texture2D plrTexture, Rectangle plrSrc) {
+void Battle_Start(Battle* b, const EnemyDef* def, Texture2D plrTexture, Rectangle plrSrc) {
 	memset(b, 0, sizeof(Battle));
 	b->active = true;
+	b->def = def;
 	b->plrTexture = plrTexture;
 	b->plrSrc = plrSrc;
-	b->enemy.hp = b->enemy.maxHp = ENEMY_MAX_HP;
+	b->enemy.hp = b->enemy.maxHp = def->maxHp;
 	b->items[0] = (BattleItem){"Bolo", 40, 2};
 	b->items[1] = (BattleItem){"Suco", 20, 3};
 	b->items[2] = (BattleItem){"Biscoito", 10, 4};
-	b->lastPattern = -1;
 	b->box = IdleBox();
 	b->menuLock = MENU_LOCK_START;
 	b->state = B_FADE_IN;
@@ -206,6 +209,8 @@ void Battle_Start(Battle* b, Texture2D plrTexture, Rectangle plrSrc) {
 
 void Battle_Stop(Battle* b) { b->active = false; }
 bool Battle_IsActive(const Battle* b) { return b->active; }
+BattleOutcome Battle_Outcome(const Battle* b) { return b->outcome; }
+const EnemyDef* Battle_Enemy(const Battle* b) { return b->def; }
 
 bool Battle_ConsumeRestart(Battle* b) {
 	bool r = b->restartRequested;
@@ -230,17 +235,17 @@ static void SoulMove(Battle* b, float dt) {
 
 static void SpawnPattern(Battle* b) {
 	Rectangle box = BulletBox();
-	float spd = EnemyAngry(b) ? 1.25f : 1.0f;
+	float spd = b->def->bulletSpeed * (EnemyAngry(b) ? 1.25f : 1.0f);
 
-	if (b->pattern == 0) {
+	if (b->pattern == PATTERN_RAIN) {
 		float x = (float)GetRandomValue((int)box.x + 12, (int)(box.x + box.width) - 12);
-		AddBullet(b, (Vector2){x, box.y - 20}, (Vector2){0, 210 * spd}, 9, 9);
+		AddBullet(b, (Vector2){x, box.y - 20}, (Vector2){0, 210 * spd}, 9, ScaledDamage(b, 9));
 		b->spawnT = 0.2f / spd;
-	} else if (b->pattern == 1) {
+	} else if (b->pattern == PATTERN_SIDES) {
 		bool right = GetRandomValue(0, 1) == 1;
 		float y = (float)GetRandomValue((int)box.y + 20, (int)(box.y + box.height) - 20);
 		float x = right ? box.x + box.width + 30 : box.x - 30;
-		AddBullet(b, (Vector2){x, y}, (Vector2){(right ? -270.0f : 270.0f) * spd, 0}, 10, 9);
+		AddBullet(b, (Vector2){x, y}, (Vector2){(right ? -270.0f : 270.0f) * spd, 0}, 10, ScaledDamage(b, 9));
 		b->spawnT = 0.6f / spd;
 	} else {
 		Vector2 ec = EnemyCenter();
@@ -248,7 +253,7 @@ static void SpawnPattern(Battle* b) {
 		float base = atan2f(aim.y, aim.x);
 		for (int i = -2; i <= 2; i++) {
 			float a = base + i * 0.22f;
-			AddBullet(b, ec, (Vector2){cosf(a) * 240 * spd, sinf(a) * 240 * spd}, 11, 12);
+			AddBullet(b, ec, (Vector2){cosf(a) * 240 * spd, sinf(a) * 240 * spd}, 11, ScaledDamage(b, 12));
 		}
 		b->spawnT = 1.0f / spd;
 	}
@@ -257,7 +262,7 @@ static void SpawnPattern(Battle* b) {
 static void UpdateEnemyTurn(Battle* b, float dt, int* plrHp) {
 	SoulMove(b, dt);
 
-	if (b->stateT < SPAWN_STOP) {
+	if (b->stateT < b->def->turnTime - SPAWN_STOP_EARLY) {
 		b->spawnT -= dt;
 		if (b->spawnT <= 0) { SpawnPattern(b); }
 	}
@@ -298,7 +303,7 @@ static void UpdateEnemyTurn(Battle* b, float dt, int* plrHp) {
 		return;
 	}
 
-	if (b->stateT >= ENEMY_TURN_TIME) {
+	if (b->stateT >= b->def->turnTime) {
 		memset(b->bullets, 0, sizeof(b->bullets));
 		b->defending = false;
 		b->turn++;
@@ -310,41 +315,76 @@ static void DoAct(Battle* b, int act) {
 	b->tp = Clampf(b->tp + 4, 0, 100);
 
 	if (act == 0) {
-		SetText(b, "* DEMONINHO - ATQ 10 DEF 5\n* Parece bravo, mas gosta de atencao.", B_ENEMY_DIALOGUE);
+		SetText(b, b->def->checkText, B_ENEMY_DIALOGUE);
 		return;
 	}
 
-	if (act == 1) {
-		b->enemy.mercy += 35;
-		SetText(b, "* Voce elogiou o DEMONINHO.\n* Ele ficou meio sem jeito.", B_ENEMY_DIALOGUE);
-	} else if (act == 2) {
-		b->enemy.mercy += 25;
-		SetText(b, "* Voce dancou.\n* O DEMONINHO tentou acompanhar.", B_ENEMY_DIALOGUE);
-	} else {
+	if (act == PACIFY_INDEX) {
 		b->tp -= TP_PACIFY_COST;
 		b->enemy.mercy += 60;
-		SetText(b, "* Voce lancou PACIFICAR!\n* O DEMONINHO ficou mais calmo.", B_ENEMY_DIALOGUE);
+		SetText(b, "* Voce lancou PACIFICAR!\n* O clima ficou mais calmo.", B_ENEMY_DIALOGUE);
+	} else {
+		const EnemyAct* a = &b->def->acts[act - 1];
+		b->enemy.mercy += a->mercy;
+		SetText(b, a->text, B_ENEMY_DIALOGUE);
 	}
 	b->enemy.mercy = Clampf(b->enemy.mercy, 0, 100);
 }
 
+static void ChooseSpare(Battle* b) {
+	const EnemyDef* d = b->def;
+	char msg[160];
+
+	if (b->listIndex == 1) {
+		if (d->isBoss) { SetText(b, "* Nao da pra fugir do chefe!", B_ENEMY_DIALOGUE); }
+		else { Finish(b, BATTLE_FLED, "* Voce fugiu..."); }
+		return;
+	}
+
+	if (EnemySpareable(b)) {
+		snprintf(msg, sizeof(msg), "* Voce poupou %s %s.\n* Ganhou 0 EXP e %d D$.", d->article, d->name, d->gold);
+		Finish(b, BATTLE_SPARED, msg);
+	} else {
+		snprintf(msg, sizeof(msg), "* Voce tentou poupar %s %s...\n* Mas ainda nao quer parar.", d->article, d->name);
+		SetText(b, msg, B_ENEMY_DIALOGUE);
+	}
+}
+
+static void UseItem(Battle* b, int* plrHp) {
+	int slot = ItemSlot(b, b->listIndex);
+	if (slot < 0) { return; }
+
+	BattleItem* it = &b->items[slot];
+	int before = *plrHp;
+	*plrHp = (int)Clampf((float)(*plrHp + it->heal), 0, PLAYER_MAX_HP);
+	it->count--;
+
+	char msg[128];
+	snprintf(msg, sizeof(msg), "* Voce usou %s.\n* Recuperou %d HP!", it->name, *plrHp - before);
+	SetText(b, msg, B_ENEMY_DIALOGUE);
+}
+
+static void UpdateMainMenu(Battle* b, bool ok) {
+	if (NavLeft()) { b->menuIndex = (b->menuIndex + BUTTON_COUNT - 1) % BUTTON_COUNT; }
+	if (NavRight()) { b->menuIndex = (b->menuIndex + 1) % BUTTON_COUNT; }
+	if (!ok) { return; }
+
+	switch (b->menuIndex) {
+	case 0: GoTo(b, B_FIGHT_SELECT); break;
+	case 1: GoTo(b, B_ACT_SELECT); break;
+	case 2: if (ItemTypes(b) > 0) { GoTo(b, B_ITEM_LIST); } break;
+	case 3: GoTo(b, B_SPARE_LIST); break;
+	default:
+		b->defending = true;
+		b->tp = Clampf(b->tp + 16, 0, 100);
+		SetText(b, "* Voce se protegeu.", B_ENEMY_DIALOGUE);
+		break;
+	}
+}
+
 static void UpdateMenu(Battle* b, bool ok, bool back, int* plrHp) {
 	if (b->state == B_MENU) {
-		if (NavLeft()) { b->menuIndex = (b->menuIndex + BUTTON_COUNT - 1) % BUTTON_COUNT; }
-		if (NavRight()) { b->menuIndex = (b->menuIndex + 1) % BUTTON_COUNT; }
-		if (!ok) { return; }
-
-		switch (b->menuIndex) {
-		case 0: GoTo(b, B_FIGHT_SELECT); break;
-		case 1: GoTo(b, B_ACT_SELECT); break;
-		case 2: if (ItemTypes(b) > 0) { GoTo(b, B_ITEM_LIST); } break;
-		case 3: GoTo(b, B_SPARE_LIST); break;
-		default:
-			b->defending = true;
-			b->tp = Clampf(b->tp + 16, 0, 100);
-			SetText(b, "* Voce se protegeu.", B_ENEMY_DIALOGUE);
-			break;
-		}
+		UpdateMainMenu(b, ok);
 		return;
 	}
 
@@ -353,40 +393,21 @@ static void UpdateMenu(Battle* b, bool ok, bool back, int* plrHp) {
 		return;
 	}
 
-	int count = 1;
-	if (b->state == B_ACT_LIST) { count = ACT_COUNT; }
-	else if (b->state == B_ITEM_LIST) { count = ItemTypes(b); }
-	else if (b->state == B_SPARE_LIST) { count = 2; }
-
+	int count = ListCount(b);
 	if (NavUp()) { b->listIndex = (b->listIndex + count - 1) % count; }
 	if (NavDown()) { b->listIndex = (b->listIndex + 1) % count; }
 	if (!ok) { return; }
 
-	if (b->state == B_FIGHT_SELECT) {
-		GoTo(b, B_ATTACK);
-	} else if (b->state == B_ACT_SELECT) {
-		GoTo(b, B_ACT_LIST);
-	} else if (b->state == B_ACT_LIST) {
-		if (b->listIndex == 3 && b->tp < TP_PACIFY_COST) { return; }
+	switch (b->state) {
+	case B_FIGHT_SELECT: GoTo(b, B_ATTACK); break;
+	case B_ACT_SELECT:   GoTo(b, B_ACT_LIST); break;
+	case B_ACT_LIST:
+		if (b->listIndex == PACIFY_INDEX && b->tp < TP_PACIFY_COST) { return; }
 		DoAct(b, b->listIndex);
-	} else if (b->state == B_ITEM_LIST) {
-		int slot = ItemSlot(b, b->listIndex);
-		if (slot < 0) { return; }
-		BattleItem* it = &b->items[slot];
-		int before = *plrHp;
-		*plrHp = (int)Clampf((float)(*plrHp + it->heal), 0, PLAYER_MAX_HP);
-		it->count--;
-		char msg[128];
-		snprintf(msg, sizeof(msg), "* Voce usou %s.\n* Recuperou %d HP!", it->name, *plrHp - before);
-		SetText(b, msg, B_ENEMY_DIALOGUE);
-	} else if (b->state == B_SPARE_LIST) {
-		if (b->listIndex == 1) {
-			Finish(b, 3, "* Voce fugiu...");
-		} else if (EnemySpareable(b)) {
-			Finish(b, 2, "* Voce poupou o DEMONINHO.\n* Ganhou 0 EXP e 15 D$.");
-		} else {
-			SetText(b, "* Voce poupou o DEMONINHO...\n* Mas ele ainda nao quer parar.", B_ENEMY_DIALOGUE);
-		}
+		break;
+	case B_ITEM_LIST:    UseItem(b, plrHp); break;
+	case B_SPARE_LIST:   ChooseSpare(b); break;
+	default: break;
 	}
 }
 
@@ -421,18 +442,28 @@ static void UpdateAttackAnim(Battle* b) {
 		b->dmgNumT = 1.0f;
 	}
 
-	if (b->stateT >= 1.3f) {
-		if (b->enemy.hp <= 0) {
-			Finish(b, 1, "* VOCE VENCEU!\n* Ganhou 30 EXP e 20 D$.");
-		} else {
-			GoTo(b, B_ENEMY_DIALOGUE);
-		}
+	if (b->stateT < 1.3f) { return; }
+
+	if (b->enemy.hp <= 0) {
+		char msg[96];
+		snprintf(msg, sizeof(msg), "* VOCE VENCEU!\n* Ganhou %d EXP e %d D$.", b->def->exp, b->def->gold);
+		Finish(b, BATTLE_WON, msg);
+	} else {
+		GoTo(b, B_ENEMY_DIALOGUE);
 	}
 }
 
-void Battle_Update(Battle* b, float dt, int* plrHp) {
-	if (!b->active) { return; }
+static void UpdateBox(Battle* b, float dt) {
+	bool toBullet = b->state == B_ENEMY_DIALOGUE || b->state == B_ENEMY_ATTACK;
+	Rectangle target = toBullet ? BulletBox() : IdleBox();
+	float k = 1.0f - expf(-14.0f * dt);
+	b->box.x += (target.x - b->box.x) * k;
+	b->box.y += (target.y - b->box.y) * k;
+	b->box.width += (target.width - b->box.width) * k;
+	b->box.height += (target.height - b->box.height) * k;
+}
 
+static void UpdateTimers(Battle* b, float dt) {
 	b->stateT += dt;
 	b->time += dt;
 	if (b->menuLock > 0) { b->menuLock -= dt; }
@@ -441,15 +472,14 @@ void Battle_Update(Battle* b, float dt, int* plrHp) {
 	if (b->dmgNumT > 0) { b->dmgNumT -= dt; }
 	if (b->invuln > 0) { b->invuln -= dt; }
 	if (b->hurtFlash > 0) { b->hurtFlash -= dt; }
-	if (b->outcome != 0) { b->outcomeT += dt; }
+	if (b->outcome != BATTLE_ONGOING) { b->outcomeT += dt; }
+}
 
-	bool toBullet = b->state == B_ENEMY_DIALOGUE || b->state == B_ENEMY_ATTACK;
-	Rectangle target = toBullet ? BulletBox() : IdleBox();
-	float k = 1.0f - expf(-14.0f * dt);
-	b->box.x += (target.x - b->box.x) * k;
-	b->box.y += (target.y - b->box.y) * k;
-	b->box.width += (target.width - b->box.width) * k;
-	b->box.height += (target.height - b->box.height) * k;
+void Battle_Update(Battle* b, float dt, int* plrHp) {
+	if (!b->active) { return; }
+
+	UpdateTimers(b, dt);
+	UpdateBox(b, dt);
 
 	bool ok = b->menuLock <= 0 && Confirm();
 	bool back = b->menuLock <= 0 && Cancel();
@@ -512,40 +542,21 @@ static void DrawMeter(float x, float y, float w, float h, float ratio, Color fil
 	DrawRectangle((int)x, (int)y, (int)(w * ratio), (int)h, fill);
 }
 
-static Color EnemyColor(char ch, const Battle* b) {
-	bool angry = EnemyAngry(b);
-	bool calm = EnemySpareable(b);
-	switch (ch) {
-		case 'H': return (Color){240, 220, 140, 255};
-		case 'P': return calm ? (Color){230, 200, 70, 255} : (angry ? (Color){170, 60, 110, 255} : (Color){130, 70, 190, 255});
-		case 'D': return calm ? (Color){170, 140, 40, 255} : (angry ? (Color){110, 30, 70, 255} : (Color){80, 40, 130, 255});
-		case 'W': return WHITE;
-		case 'E': return (b->state == B_ENEMY_DIALOGUE && angry) ? RED : BLACK;
-		case 'M': return (Color){90, 10, 30, 255};
-		case 'F': return (Color){40, 20, 60, 255};
-		default:  return BLANK;
-	}
-}
-
 static void DrawEnemy(const Battle* b) {
 	float alpha = 1.0f;
-	if (b->outcome == 1 || b->outcome == 2) { alpha = 1.0f - Clampf(b->outcomeT / 1.0f, 0, 1); }
+	if (b->outcome == BATTLE_WON || b->outcome == BATTLE_SPARED) { alpha = 1.0f - Clampf(b->outcomeT / 1.0f, 0, 1); }
 	if (alpha <= 0) { return; }
 
-	Vector2 pos = EnemyPos();
-	float shake = b->enemy.shake > 0 ? sinf(b->time * 90.0f) * b->enemy.shake : 0;
-	bool flash = b->enemy.hitFlash > 0;
+	Vector2 c = EnemyCenter();
+	if (b->enemy.shake > 0) { c.x += sinf(b->time * 90.0f) * b->enemy.shake; }
 
-	DrawEllipse((int)(pos.x + ENEMY_SIZE / 2.0f), (int)(pos.y + ENEMY_SIZE), ENEMY_SIZE / 2, 10, Fade(BLACK, 0.35f * alpha));
-
-	for (int row = 0; row < ENEMY_GRID; row++) {
-		for (int col = 0; col < ENEMY_GRID; col++) {
-			char ch = ENEMY_SPRITE[row][ENEMY_GRID - 1 - col];
-			if (ch == '.') { continue; }
-			Color c = flash ? WHITE : EnemyColor(ch, b);
-			DrawRectangle((int)(pos.x + shake) + col * ENEMY_PIXEL, (int)pos.y + row * ENEMY_PIXEL, ENEMY_PIXEL, ENEMY_PIXEL, Fade(c, alpha));
-		}
-	}
+	EnemyLook look = {
+		.flash = b->enemy.hitFlash > 0,
+		.angry = EnemyAngry(b),
+		.calm = EnemySpareable(b),
+		.alert = b->state == B_ENEMY_DIALOGUE,
+	};
+	Enemy_Draw(b->def, c, EnemySize(b), b->time * 6.0f, look, alpha);
 }
 
 static void DrawPlayer(const Battle* b) {
@@ -616,7 +627,7 @@ static void DrawBox(const Battle* b) {
 static void DrawEnemyRow(const Battle* b, Rectangle box) {
 	int y = (int)box.y + 60;
 	Color nameColor = EnemySpareable(b) ? YELLOW : WHITE;
-	DrawText("* " ENEMY_NAME, (int)box.x + 90, y, 32, nameColor);
+	DrawText(TextFormat("* %s", b->def->name), (int)box.x + 90, y, 32, nameColor);
 	Encounter_DrawSoul((Vector2){box.x + 55, (float)y + 17}, RED);
 
 	float hpRatio = (float)b->enemy.hp / b->enemy.maxHp;
@@ -629,31 +640,34 @@ static void DrawEnemyRow(const Battle* b, Rectangle box) {
 	DrawText(TextFormat("%d%%", (int)b->enemy.mercy), (int)box.x + 975, y + 6, 22, WHITE);
 }
 
-static void DrawList(const Battle* b, Rectangle box) {
-	int count = 1;
-	if (b->state == B_ACT_LIST) { count = ACT_COUNT; }
-	else if (b->state == B_ITEM_LIST) { count = ItemTypes(b); }
-	else if (b->state == B_SPARE_LIST) { count = 2; }
+static Color ListItemColor(const Battle* b, int i) {
+	if (b->state == B_ACT_LIST && i == PACIFY_INDEX) {
+		return b->tp >= TP_PACIFY_COST ? (Color){255, 130, 200, 255} : GRAY;
+	}
+	if (b->state == B_SPARE_LIST) {
+		if (i == 0 && EnemySpareable(b)) { return YELLOW; }
+		if (i == 1 && b->def->isBoss) { return GRAY; }
+	}
+	return WHITE;
+}
 
+static const char* ListItemLabel(const Battle* b, int i) {
+	if (b->state == B_ACT_LIST) { return ActLabel(b, i); }
+	if (b->state == B_ITEM_LIST) {
+		const BattleItem* it = &b->items[ItemSlot(b, i)];
+		return TextFormat("%s (+%d HP) x%d", it->name, it->heal, it->count);
+	}
+	return SPARE_LABELS[i];
+}
+
+static void DrawList(const Battle* b, Rectangle box) {
+	int count = ListCount(b);
 	for (int i = 0; i < count; i++) {
 		int y = (int)box.y + 22 + i * 38;
 		int x = (int)box.x + 90;
-		Color c = WHITE;
-		const char* label = "";
 
-		if (b->state == B_ACT_LIST) {
-			label = ACT_LABELS[i];
-			if (i == 3) { c = b->tp >= TP_PACIFY_COST ? (Color){255, 130, 200, 255} : GRAY; }
-		} else if (b->state == B_ITEM_LIST) {
-			const BattleItem* it = &b->items[ItemSlot(b, i)];
-			label = TextFormat("%s (+%d HP) x%d", it->name, it->heal, it->count);
-		} else {
-			label = SPARE_LABELS[i];
-			if (i == 0 && EnemySpareable(b)) { c = YELLOW; }
-		}
-
-		DrawText(TextFormat("* %s", label), x, y, 30, c);
-		if (b->state == B_ACT_LIST && i == 3) {
+		DrawText(TextFormat("* %s", ListItemLabel(b, i)), x, y, 30, ListItemColor(b, i));
+		if (b->state == B_ACT_LIST && i == PACIFY_INDEX) {
 			DrawText(TextFormat("%d%% TP", (int)TP_PACIFY_COST), x + 300, y + 6, 22, (Color){255, 160, 40, 255});
 		}
 		if (i == b->listIndex) { Encounter_DrawSoul((Vector2){(float)x - 35, (float)y + 16}, RED); }
@@ -679,34 +693,35 @@ static void DrawAttackBar(const Battle* b, Rectangle box) {
 }
 
 static void DrawAttackAnim(const Battle* b) {
-	Vector2 pos = EnemyPos();
+	float left = EnemyLeft(b), top = EnemyTop(b), size = EnemySize(b);
 
 	if (!b->attackMissed) {
 		for (int i = 0; i < 3; i++) {
 			float start = 0.1f + i * 0.08f;
 			if (b->stateT < start || b->stateT > start + 0.25f) { continue; }
 			float a = 1.0f - (b->stateT - start) / 0.25f;
-			float ox = pos.x + 15 + i * 38;
-			DrawLineEx((Vector2){ox, pos.y - 10}, (Vector2){ox + 44, pos.y + ENEMY_SIZE + 10}, 8, Fade(WHITE, a));
+			float ox = left + 15 + i * size * 0.35f;
+			DrawLineEx((Vector2){ox, top - 10}, (Vector2){ox + 44, top + size + 10}, 8, Fade(WHITE, a));
 		}
 	}
 
 	if (b->stateT >= 0.35f && b->stateT < 1.3f) {
 		float hpRatio = (float)b->enemy.hp / b->enemy.maxHp;
-		DrawMeter(pos.x - 20, pos.y - 56, ENEMY_SIZE + 40, 18, hpRatio, RED);
+		DrawMeter(left - 20, top - 56, size + 40, 18, hpRatio, RED);
 	}
 
 	if (b->dmgNumT > 0) {
 		float rise = (1.0f - b->dmgNumT) * 30.0f;
 		const char* txt = b->attackMissed ? "MISS" : TextFormat("%d", b->lastDamage);
 		Color c = b->attackMissed ? LIGHTGRAY : (Color){255, 90, 90, 255};
-		DrawText(txt, (int)(pos.x + ENEMY_SIZE / 2.0f) - MeasureText(txt, 44) / 2, (int)(pos.y - 112 - rise), 44, Fade(c, Clampf(b->dmgNumT * 2.0f, 0, 1)));
+		float cx = EnemyCenter().x;
+		DrawText(txt, (int)cx - MeasureText(txt, 44) / 2, (int)(top - 112 - rise), 44, Fade(c, Clampf(b->dmgNumT * 2.0f, 0, 1)));
 	}
 }
 
 static void DrawBubble(const Battle* b) {
-	Vector2 pos = EnemyPos();
-	Rectangle r = {pos.x - 330, pos.y + 5, 290, 76};
+	Vector2 c = EnemyCenter();
+	Rectangle r = {c.x - EnemySize(b) * 0.85f - 320, EnemyTop(b) + 5, 290, 76};
 	DrawRectangleRounded(r, 0.3f, 8, WHITE);
 	DrawTriangle((Vector2){r.x + r.width - 2, r.y + 18}, (Vector2){r.x + r.width - 2, r.y + 50}, (Vector2){r.x + r.width + 26, r.y + 36}, WHITE);
 	DrawTyped(b->line, b->stateT, (int)r.x + 20, (int)r.y + 24, 28, BLACK);
@@ -716,23 +731,13 @@ static void DrawBullets(const Battle* b) {
 	for (int i = 0; i < MAX_BULLETS; i++) {
 		const Bullet* bl = &b->bullets[i];
 		if (!bl->active) { continue; }
-		Color outer = bl->dmg >= 12 ? (Color){255, 150, 40, 255} : (Color){255, 70, 90, 255};
+		Color outer = bl->r >= 11 ? (Color){255, 150, 40, 255} : (Color){255, 70, 90, 255};
 		DrawCircleV(bl->pos, bl->r, outer);
 		DrawCircleV(bl->pos, bl->r * 0.5f, WHITE);
 	}
 }
 
-void Battle_Draw(const Battle* b, int plrHp) {
-	if (!b->active) { return; }
-	int sw = GetScreenWidth(), sh = GetScreenHeight();
-
-	ClearBackground(BLACK);
-	DrawBackground(b);
-	DrawTpGauge(b);
-	DrawEnemy(b);
-	DrawPlayer(b);
-	DrawBox(b);
-
+static void DrawBoxContents(const Battle* b) {
 	Rectangle box = b->box;
 	switch (b->state) {
 	case B_MENU:
@@ -769,27 +774,44 @@ void Battle_Draw(const Battle* b, int plrHp) {
 	default:
 		break;
 	}
+}
 
+static void DrawGameOver(const Battle* b) {
+	int sw = GetScreenWidth(), sh = GetScreenHeight();
+
+	if (b->stateT < 0.6f) {
+		Encounter_DrawSoul(b->soul, RED);
+	} else {
+		for (int i = 0; i < MAX_SHARDS; i++) { DrawRectangle((int)b->shards[i].x - 4, (int)b->shards[i].y - 4, 8, 8, RED); }
+	}
+
+	float a = Clampf((b->stateT - 0.6f) / 1.0f, 0, 1);
+	DrawRectangle(0, 0, sw, sh, Fade(BLACK, a * 0.96f));
+	if (b->stateT <= 1.2f) { return; }
+
+	const char* msg = "GAME OVER";
+	DrawText(msg, sw / 2 - MeasureText(msg, 72) / 2, sh / 2 - 60, 72, RED);
+	if (b->stateT > 2.0f) {
+		const char* hint = "Aperte [ENTER] ou [R] para tentar de novo";
+		DrawText(hint, sw / 2 - MeasureText(hint, 26) / 2, sh / 2 + 30, 26, LIGHTGRAY);
+	}
+}
+
+void Battle_Draw(const Battle* b, int plrHp) {
+	if (!b->active) { return; }
+
+	ClearBackground(BLACK);
+	DrawBackground(b);
+	DrawTpGauge(b);
+	DrawEnemy(b);
+	DrawPlayer(b);
+	DrawBox(b);
+	DrawBoxContents(b);
 	DrawButtons(b);
 	DrawPanel(plrHp);
 
-	if (b->state == B_LOST) {
-		if (b->stateT < 0.6f) {
-			Encounter_DrawSoul(b->soul, RED);
-		} else {
-			for (int i = 0; i < MAX_SHARDS; i++) { DrawRectangle((int)b->shards[i].x - 4, (int)b->shards[i].y - 4, 8, 8, RED); }
-		}
-		float a = Clampf((b->stateT - 0.6f) / 1.0f, 0, 1);
-		DrawRectangle(0, 0, sw, sh, Fade(BLACK, a * 0.96f));
-		if (b->stateT > 1.2f) {
-			const char* msg = "GAME OVER";
-			DrawText(msg, sw / 2 - MeasureText(msg, 72) / 2, sh / 2 - 60, 72, RED);
-			if (b->stateT > 2.0f) {
-				const char* hint = "Aperte [ENTER] ou [R] para tentar de novo";
-				DrawText(hint, sw / 2 - MeasureText(hint, 26) / 2, sh / 2 + 30, 26, LIGHTGRAY);
-			}
-		}
+	if (b->state == B_LOST) { DrawGameOver(b); }
+	if (b->state == B_FADE_IN) {
+		DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), Fade(BLACK, 1.0f - Clampf(b->stateT / 0.5f, 0, 1)));
 	}
-
-	if (b->state == B_FADE_IN) { DrawRectangle(0, 0, sw, sh, Fade(BLACK, 1.0f - Clampf(b->stateT / 0.5f, 0, 1))); }
 }
