@@ -15,6 +15,12 @@
 #define DIALOGUE_TIME     2.2f
 #define MENU_LOCK_START   0.3f
 #define PACIFY_INDEX      (ACT_COUNT - 1)
+#define PLAYER_IDLE_ROW    5
+#define PLAYER_ACTION_ROW  6
+#define PLAYER_ANIM_FRAMES 4
+#define PLAYER_ANIM_FPS    8.0f
+#define PLAYER_ACTION_TIME 1.0f
+#define PLAYER_DRAW_HEIGHT 150.0f
 
 static const char* BUTTON_LABELS[BUTTON_COUNT] = {"LUTAR", "AGIR", "ITEM", "POUPAR", "DEFENDER"};
 static const char* SPARE_LABELS[2] = {"Poupar", "Fugir"};
@@ -185,18 +191,22 @@ static void GoTo(Battle* b, BattleState s) {
 	}
 }
 
+static void PlayerActs(Battle* b) {
+	b->actionT = PLAYER_ACTION_TIME;
+}
+
 static void Finish(Battle* b, BattleOutcome outcome, const char* msg) {
 	b->outcome = outcome;
 	b->outcomeT = 0;
 	SetText(b, msg, B_DONE);
 }
 
-void Battle_Start(Battle* b, const EnemyDef* def, Texture2D plrTexture, Rectangle plrSrc) {
+void Battle_Start(Battle* b, const EnemyDef* def, Texture2D plrTexture, Vector2 plrFrameSize) {
 	memset(b, 0, sizeof(Battle));
 	b->active = true;
 	b->def = def;
 	b->plrTexture = plrTexture;
-	b->plrSrc = plrSrc;
+	b->plrFrameSize = plrFrameSize;
 	b->enemy.hp = b->enemy.maxHp = def->maxHp;
 	b->items[0] = (BattleItem){"Bolo", 40, 2};
 	b->items[1] = (BattleItem){"Suco", 20, 3};
@@ -312,6 +322,7 @@ static void UpdateEnemyTurn(Battle* b, float dt, int* plrHp) {
 }
 
 static void DoAct(Battle* b, int act) {
+	PlayerActs(b);
 	b->tp = Clampf(b->tp + 4, 0, 100);
 
 	if (act == 0) {
@@ -334,6 +345,7 @@ static void DoAct(Battle* b, int act) {
 static void ChooseSpare(Battle* b) {
 	const EnemyDef* d = b->def;
 	char msg[160];
+	PlayerActs(b);
 
 	if (b->listIndex == 1) {
 		if (d->isBoss) { SetText(b, "* Nao da pra fugir do chefe!", B_ENEMY_DIALOGUE); }
@@ -356,6 +368,7 @@ static void UseItem(Battle* b, int* plrHp) {
 
 	BattleItem* it = &b->items[slot];
 	int before = *plrHp;
+	PlayerActs(b);
 	*plrHp = (int)Clampf((float)(*plrHp + it->heal), 0, PLAYER_MAX_HP);
 	it->count--;
 
@@ -376,6 +389,7 @@ static void UpdateMainMenu(Battle* b, bool ok) {
 	case 3: GoTo(b, B_SPARE_LIST); break;
 	default:
 		b->defending = true;
+		PlayerActs(b);
 		b->tp = Clampf(b->tp + 16, 0, 100);
 		SetText(b, "* Voce se protegeu.", B_ENEMY_DIALOGUE);
 		break;
@@ -426,6 +440,7 @@ static void UpdateAttack(Battle* b, bool ok) {
 		b->lastDamage = 0;
 		b->attackMissed = true;
 	}
+	PlayerActs(b);
 	GoTo(b, B_ATTACK_ANIM);
 }
 
@@ -472,6 +487,7 @@ static void UpdateTimers(Battle* b, float dt) {
 	if (b->dmgNumT > 0) { b->dmgNumT -= dt; }
 	if (b->invuln > 0) { b->invuln -= dt; }
 	if (b->hurtFlash > 0) { b->hurtFlash -= dt; }
+	if (b->actionT > 0) { b->actionT -= dt; }
 	if (b->outcome != BATTLE_ONGOING) { b->outcomeT += dt; }
 }
 
@@ -559,16 +575,23 @@ static void DrawEnemy(const Battle* b) {
 	Enemy_Draw(b->def, c, EnemySize(b), b->time * 6.0f, look, alpha);
 }
 
-static void DrawPlayer(const Battle* b) {
-	float scale = 150.0f / b->plrSrc.height;
-	Rectangle dest = {300, 150, b->plrSrc.width * scale, 150};
-	struct Rectangle plr_src;
+static Rectangle PlayerFrame(const Battle* b) {
+	bool acting = b->actionT > 0 || b->state == B_ATTACK_ANIM;
+	int row = acting ? PLAYER_ACTION_ROW : PLAYER_IDLE_ROW;
+	int col = (int)(b->time * PLAYER_ANIM_FPS) % PLAYER_ANIM_FRAMES;
+	float w = b->plrFrameSize.x, h = b->plrFrameSize.y;
+	return (Rectangle){col * w, row * h, w, h};
+}
 
+static void DrawPlayer(const Battle* b) {
+	Rectangle src = PlayerFrame(b);
+	float scale = PLAYER_DRAW_HEIGHT / src.height;
+	Rectangle dest = {300, 150, src.width * scale, PLAYER_DRAW_HEIGHT};
 	for (int i = 0; i < 6; i++) {
 		DrawCircle((int)(dest.x + dest.width / 2), (int)(dest.y + 75), 170 - i * 26, Fade((Color){190, 150, 255, 255}, 0.07f));
 	}
 	DrawEllipse((int)(dest.x + dest.width / 2), (int)(dest.y + 150), (int)(dest.width / 2), 9, Fade(BLACK, 0.5f));
-	DrawTexturePro(b->plrTexture, plr_src, dest, (Vector2){0, 0}, 0, WHITE);
+	DrawTexturePro(b->plrTexture, src, dest, (Vector2){0, 0}, 0, WHITE);
 }
 
 static void DrawBackground(const Battle* b) {

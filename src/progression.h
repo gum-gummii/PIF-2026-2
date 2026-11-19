@@ -8,10 +8,10 @@
 
 typedef struct {
 	int wins;
-	int winsToBoss;
-	bool bossPending;
-	bool bossOnMap;
+	int winsToUnlock;
+	bool doorUnlocked;
 	bool cleared;
+	bool inBossRoom;
 	int fighting;
 	float grace;
 	float bannerT;
@@ -21,16 +21,15 @@ typedef struct {
 typedef struct {
 	MinionField* minions;
 	Score* score;
-	Vector2 worldSize;
-	Rectangle plrBody;
-	LoadedAssetsClass* Assets;
 } StageContext;
 
-void Progression_Reset(Progression* p, int winsToBoss);
+void Progression_Reset(Progression* p, int winsToUnlock);
 bool Progression_CanEncounter(const Progression* p);
+int  Progression_WinsLeft(const Progression* p);
 void Progression_BeginFight(Progression* p, int minionIndex);
 void Progression_EndFight(Progression* p, BattleOutcome outcome, StageContext ctx);
-void Progression_Update(Progression* p, float dt, StageContext ctx);
+void Progression_SetInBossRoom(Progression* p, bool inBossRoom);
+void Progression_Update(Progression* p, float dt);
 void Progression_DrawHud(const Progression* p);
 
 #endif
