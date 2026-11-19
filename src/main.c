@@ -310,6 +310,7 @@ int main() {
 
 	const EnemyDef* cutsceneBattle = NULL;
 	bool bossCutsceneSeen = false;
+	bool introPending = true;
 
 	while (!WindowShouldClose()) {
 		WaitTime(1.0 / 60.0);
@@ -395,6 +396,12 @@ int main() {
 					StartEncounter(&battle, &encounter, bossDef, &camera, plr, plrFrame);
 				}
 			}
+		}
+
+		if (introPending) {
+			introPending = false;
+			Cutscene_StartIntro(plr->texture, plrFrame);
+			inCutscene = true;
 		}
 
 
