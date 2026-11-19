@@ -57,7 +57,7 @@ typedef struct {
 
 void Minions_Spawn(MinionField* f, int count, Vector2 worldSize, Rectangle plrBody, LoadedAssetsClass* Assets);
 void Minions_Clear(MinionField* f);
-int  Minions_SpawnBoss(MinionField* f, Vector2 worldSize, Rectangle plrBody, LoadedAssetsClass* Assets);
+int  Minions_SpawnBoss(MinionField* f, Vector2 pos);
 void Minions_Remove(MinionField* f, int index);
 
 int Minions_Update(MinionField* f, float dt, MinionInput in, Score* score, Vector2 worldSize, LoadedAssetsClass* Assets);

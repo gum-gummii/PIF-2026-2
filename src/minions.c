@@ -103,11 +103,8 @@ void Minions_Spawn(MinionField* f, int count, Vector2 worldSize, Rectangle plrBo
 	}
 }
 
-int Minions_SpawnBoss(MinionField* f, Vector2 worldSize, Rectangle plrBody, LoadedAssetsClass* Assets) {
+int Minions_SpawnBoss(MinionField* f, Vector2 pos) {
 	if (f->count >= MAX_MINIONS) { return -1; }
-
-	Vector2 pos;
-	if (!FindFreeSpot(&pos, STATS[MINION_BOSS].size, worldSize, plrBody, Assets)) { return -1; }
 
 	int index = f->count++;
 	SetupMinion(&f->m[index], MINION_BOSS, pos);

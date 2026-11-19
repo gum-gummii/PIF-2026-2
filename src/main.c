@@ -11,6 +11,8 @@
 #include <score.h>
 #include <minions.h>
 #include <progression.h>
+#include <scene_overlay.h>
+#include <door.h>
 #include <cutscene.h>
 #include <time.h>
 
@@ -27,8 +29,20 @@ int playerSpiritSize = 40;
 float dmgDebounce = 0;
 float clockTimestampMs = 0;
 Vector2 worldSize = {0, 0};
-const float SCENE_ART_HEIGHT = 750.0f;
-const int START_SCENARIO = 1;
+typedef enum {
+	SCENARIO_GARDEN = 0,
+	SCENARIO_ENTRANCE = 1,
+	SCENARIO_BOSS_ROOM = 8
+} ScenarioId;
+
+typedef struct {
+	int scenario;
+	Texture2D texture;
+} ScenarioBackground;
+
+const float ENTRANCE_ART_HEIGHT = 750.0f;
+const float BOSS_ROOM_ART_HEIGHT = 748.0f;
+const int START_SCENARIO = SCENARIO_ENTRANCE;
 
 int GetBattleSquareSize() { return GetScreenHeight() - 50; }
 int GetBattleBorderSize() { return (int)round(GetBattleSquareSize() / 50); }
@@ -84,71 +98,50 @@ void MoveSpirit(Spirit* plrSpirit) {
 	plrSpirit->position.y = fminf(fmaxf(plrSpirit->position.y, topLimit), bottomLimit);
 }
 
-bool MovePlr(Character* plr, Rectangle plrTextureRect, Vector2* plrCurrentFrame, LoadedAssetsClass* Assets) {
-	float speed       = plr->movespeed;
-	float sqrtSpeed   = speed / sqrt(2);
+Rectangle GetPlayerCollider(Vector2 position, Rectangle plrFrame) {
+	return (Rectangle){position.x + plrFrame.width * 0.28f, position.y + plrFrame.height * 0.80f, plrFrame.width * 0.46f, plrFrame.height * 0.17f};
+}
 
-	float leftLimit   = 0;
-	float topLimit    = 0;
-	float rightLimit  = worldSize.x - plrTextureRect.width;
-	float bottomLimit = worldSize.y - plrTextureRect.height;
+float MovePlrAxis(Character* plr, Rectangle plrFrame, float delta, bool horizontal, bool ignoreWalls, LoadedAssetsClass* Assets) {
+	float maxX = worldSize.x - plrFrame.width;
+	float maxY = worldSize.y - plrFrame.height;
+	float step = delta;
 
-	bool hasVerticalMovement   = IsKeyDown(KEY_UP)   || IsKeyDown(KEY_W) || IsKeyDown(KEY_DOWN)  || IsKeyDown(KEY_S);
-	bool hasHorizontalMovement = IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A) || IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D);
+	while (fabsf(step) >= 1.0f) {
+		Vector2 next = plr->position;
+		if (horizontal) { next.x = fminf(fmaxf(next.x + step, 0), maxX); }
+		else            { next.y = fminf(fmaxf(next.y + step, 0), maxY); }
+
+		if (ignoreWalls || !Assets->CheckColisions(Assets, GetPlayerCollider(next, plrFrame))) {
+			float moved = horizontal ? next.x - plr->position.x : next.y - plr->position.y;
+			plr->position = next;
+			return moved;
+		}
+		step += (step > 0) ? -1.0f : 1.0f;
+	}
+	return 0;
+}
+
+bool MovePlr(Character* plr, Rectangle plrFrame, Vector2* plrCurrentFrame, LoadedAssetsClass* Assets) {
+	bool up    = IsKeyDown(KEY_UP)    || IsKeyDown(KEY_W);
+	bool down  = IsKeyDown(KEY_DOWN)  || IsKeyDown(KEY_S);
+	bool left  = IsKeyDown(KEY_LEFT)  || IsKeyDown(KEY_A);
+	bool right = IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D);
+	bool hasVerticalMovement   = up || down;
+	bool hasHorizontalMovement = left || right;
+
+	float speed = plr->movespeed;
+	float step = (hasVerticalMovement && hasHorizontalMovement) ? speed / sqrtf(2) : speed;
+	bool ignoreWalls = Assets->CheckColisions(Assets, GetPlayerCollider(plr->position, plrFrame));
 	bool moved = false;
-	Rectangle futurePos = {0, 0, 0, 0};
 
-	float verticalStep = hasHorizontalMovement ? sqrtSpeed : speed;
-	float horizontalStep = hasVerticalMovement ? sqrtSpeed : speed;
+	if (down  && MovePlrAxis(plr, plrFrame,  step, false, ignoreWalls, Assets) != 0) { plrCurrentFrame->y = 1; moved = true; }
+	if (up    && MovePlrAxis(plr, plrFrame, -step, false, ignoreWalls, Assets) != 0) { plrCurrentFrame->y = 3; moved = true; }
+	if (left  && MovePlrAxis(plr, plrFrame, -step, true,  ignoreWalls, Assets) != 0) { plrCurrentFrame->y = 2; moved = true; }
+	if (right && MovePlrAxis(plr, plrFrame,  step, true,  ignoreWalls, Assets) != 0) { plrCurrentFrame->y = 4; moved = true; }
 
-
-	if (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S)) {
-		float newY = fminf(plr->position.y + verticalStep, bottomLimit);
-		futurePos = (Rectangle){plr->position.x, newY, plrTextureRect.width, plrTextureRect.height};
-		moved = true;
-
-		if (!Assets->CheckColisions(Assets, futurePos)) {
-			plr->position.y = newY;
-			plrCurrentFrame->y = 1;
-		}
-	}
-
-	if (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W)) {
-		float newY = fmaxf(plr->position.y - verticalStep, topLimit);
-		futurePos = (Rectangle){plr->position.x, newY, plrTextureRect.width, plrTextureRect.height};
-		moved = true;
-
-		if (!Assets->CheckColisions(Assets, futurePos)) {
-			plr->position.y = newY;
-			plrCurrentFrame->y = 3;
-		}
-	}
-
-	if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A)) {
-		float newX = fmaxf(plr->position.x - horizontalStep, leftLimit);
-		futurePos = (Rectangle){newX, plr->position.y, plrTextureRect.width, plrTextureRect.height};
-		moved = true;
-
-		if (!Assets->CheckColisions(Assets, futurePos)) {
-			plr->position.x = newX;
-			plrCurrentFrame->y = 2;
-		}
-	}
-
-	if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D)) {
-		float newX = fminf(plr->position.x + horizontalStep, rightLimit);
-		futurePos = (Rectangle){newX, plr->position.y, plrTextureRect.width, plrTextureRect.height};
-		moved = true;
-
-		if (!Assets->CheckColisions(Assets, futurePos)) {
-			plr->position.x = newX;
-			plrCurrentFrame->y = 4;
-		}
-	}
-
-	//printf("time: %d\ndb: %d\n", sec, dmgDebounce);
 	if (dmgDebounce - clockTimestampMs <= 0 && moved) {
-		float dmg = Assets->CheckDamageColisions(Assets, futurePos);
+		float dmg = Assets->CheckDamageColisions(Assets, GetPlayerCollider(plr->position, plrFrame));
 		if (dmg != 0) {
 			plr->hp -= dmg;
 			if (dmg > 0) { dmgDebounce = clockTimestampMs + DMG_COOLDOWN; }
@@ -212,19 +205,43 @@ void DrawWorld(Texture2D* background, LoadedAssetsClass* Assets, bool debugInfo)
 //}
 
 
-Rectangle SceneRect(float x, float y, float width, float height) {
-	float scale = GetScreenHeight() / SCENE_ART_HEIGHT;
+Rectangle ArtRect(float artHeight, float x, float y, float width, float height) {
+	float scale = GetScreenHeight() / artHeight;
 	return (Rectangle){x * scale, y * scale, width * scale, height * scale};
 }
 
-Texture2D* GetScenarioBackground(Texture2D* backgrounds, int count, int scenario) {
-	if (scenario < 0 || scenario >= count || backgrounds[scenario].id == 0) { return NULL; }
-	return &backgrounds[scenario];
+Rectangle EntranceRect(float x, float y, float width, float height) { return ArtRect(ENTRANCE_ART_HEIGHT, x, y, width, height); }
+Rectangle BossRoomRect(float x, float y, float width, float height) { return ArtRect(BOSS_ROOM_ART_HEIGHT, x, y, width, height); }
+
+Texture2D* GetScenarioBackground(ScenarioBackground* list, int count, int scenario) {
+	for (int i = 0; i < count; i++) {
+		if (list[i].scenario == scenario && list[i].texture.id != 0) { return &list[i].texture; }
+	}
+	return NULL;
 }
 
 Vector2 GetScenarioSpawn(int scenario) {
-	if (scenario == 1) { return (Vector2){30, 330}; }
+	if (scenario == SCENARIO_ENTRANCE) { return (Vector2){30, 330}; }
+	if (scenario == SCENARIO_BOSS_ROOM) { return (Vector2){20, 285}; }
 	return GetCenterOfScreen();
+}
+
+Vector2 GetDoorArrival(int scenario) {
+	if (scenario == SCENARIO_ENTRANCE) { return (Vector2){2230, 305}; }
+	return GetScenarioSpawn(scenario);
+}
+
+Vector2 GetBossRoomBossPosition(void) {
+	Rectangle r = BossRoomRect(1560, 405, 0, 0);
+	return (Vector2){r.x, r.y};
+}
+
+Rectangle GetBossRoomExit(void) {
+	return BossRoomRect(0, 300, 40, 290);
+}
+
+void InitCasinoDoor(Door* door) {
+	Door_Init(door, EntranceRect(2535, 400, 64, 120), EntranceRect(2440, 410, 82, 70));
 }
 
 void DrawGameScenarios(int scenarioIndex, LoadedAssetsClass* Assets) {
@@ -240,18 +257,18 @@ void DrawGameScenarios(int scenarioIndex, LoadedAssetsClass* Assets) {
 
 		Rectangle hb3 = {GetScreenWidth() - 200, 0, 200, 200};
 		Assets->NewHitbox(Assets, "KardKassinoGarden_HB3", hb3, false, -25);
-	} else if (scenarioIndex == 1) { // Kard Kassino Entrace
-		Assets->NewHitbox(Assets, "Entrance_Skyline", SceneRect(0, 0, 2834, 140), true, 0);
-		Assets->NewHitbox(Assets, "Entrance_Fountain", SceneRect(575, 370, 250, 100), true, 0);
-		Assets->NewHitbox(Assets, "Entrance_CarRed", SceneRect(20, 600, 176, 150), true, 0);
-		Assets->NewHitbox(Assets, "Entrance_CarBlue", SceneRect(226, 645, 173, 105), true, 0);
-		Assets->NewHitbox(Assets, "Entrance_CarYellow", SceneRect(506, 625, 168, 125), true, 0);
-		Assets->NewHitbox(Assets, "Entrance_CarGreen", SceneRect(1066, 625, 173, 125), true, 0);
-		Assets->NewHitbox(Assets, "Entrance_Planter1", SceneRect(1537, 545, 110, 65), true, 0);
-		Assets->NewHitbox(Assets, "Entrance_Planter2", SceneRect(1757, 545, 110, 65), true, 0);
-		Assets->NewHitbox(Assets, "Entrance_Planter3", SceneRect(1977, 545, 110, 65), true, 0);
-		Assets->NewHitbox(Assets, "Entrance_Planter4", SceneRect(2197, 545, 110, 65), true, 0);
-		Assets->NewHitbox(Assets, "Entrance_Kassino", SceneRect(2520, 0, 314, 750), true, 0);
+	} else if (scenarioIndex == SCENARIO_ENTRANCE) { // Kard Kassino Entrace
+		Assets->NewHitbox(Assets, "Entrance_Skyline", EntranceRect(0, 0, 2834, 140), true, 0);
+		Assets->NewHitbox(Assets, "Entrance_Fountain", EntranceRect(583, 392, 224, 66), true, 0);
+		Assets->NewHitbox(Assets, "Entrance_CarRed", EntranceRect(20, 600, 176, 150), true, 0);
+		Assets->NewHitbox(Assets, "Entrance_CarBlue", EntranceRect(226, 645, 173, 105), true, 0);
+		Assets->NewHitbox(Assets, "Entrance_CarYellow", EntranceRect(506, 625, 168, 125), true, 0);
+		Assets->NewHitbox(Assets, "Entrance_CarGreen", EntranceRect(1066, 625, 173, 125), true, 0);
+		Assets->NewHitbox(Assets, "Entrance_Planter1", EntranceRect(1537, 545, 110, 65), true, 0);
+		Assets->NewHitbox(Assets, "Entrance_Planter2", EntranceRect(1757, 545, 110, 65), true, 0);
+		Assets->NewHitbox(Assets, "Entrance_Planter3", EntranceRect(1977, 545, 110, 65), true, 0);
+		Assets->NewHitbox(Assets, "Entrance_Planter4", EntranceRect(2197, 545, 110, 65), true, 0);
+		Assets->NewHitbox(Assets, "Entrance_Kassino", EntranceRect(2520, 0, 314, 750), true, 0);
 
 	} else if (scenarioIndex == 2) { // Kard Kassino Lobby
 
@@ -265,7 +282,25 @@ void DrawGameScenarios(int scenarioIndex, LoadedAssetsClass* Assets) {
 
 	} else if (scenarioIndex == 7) { // Kard Kassino 
 
-	} else if (scenarioIndex == 8) { // Kard Kassino 
+	} else if (scenarioIndex == SCENARIO_BOSS_ROOM) {
+		Assets->NewHitbox(Assets, "BossRoom_TopWall", BossRoomRect(0, 0, 1837, 75), true, 0);
+		Assets->NewHitbox(Assets, "BossRoom_TopSlope1", BossRoomRect(0, 75, 520, 40), true, 0);
+		Assets->NewHitbox(Assets, "BossRoom_TopSlope2", BossRoomRect(0, 115, 440, 50), true, 0);
+		Assets->NewHitbox(Assets, "BossRoom_TopSlope3", BossRoomRect(0, 165, 380, 50), true, 0);
+		Assets->NewHitbox(Assets, "BossRoom_TopSlope4", BossRoomRect(0, 215, 300, 50), true, 0);
+		Assets->NewHitbox(Assets, "BossRoom_TopSlope5", BossRoomRect(0, 265, 210, 45), true, 0);
+		Assets->NewHitbox(Assets, "BossRoom_TopColumn1", BossRoomRect(925, 0, 75, 80), true, 0);
+		Assets->NewHitbox(Assets, "BossRoom_TopColumn2", BossRoomRect(1370, 0, 75, 90), true, 0);
+		Assets->NewHitbox(Assets, "BossRoom_BottomLeft", BossRoomRect(0, 585, 300, 163), true, 0);
+		Assets->NewHitbox(Assets, "BossRoom_BottomColumn1", BossRoomRect(285, 580, 80, 168), true, 0);
+		Assets->NewHitbox(Assets, "BossRoom_BottomSlope1", BossRoomRect(360, 625, 60, 123), true, 0);
+		Assets->NewHitbox(Assets, "BossRoom_BottomSlope2", BossRoomRect(420, 655, 60, 93), true, 0);
+		Assets->NewHitbox(Assets, "BossRoom_BottomSlope3", BossRoomRect(480, 685, 70, 63), true, 0);
+		Assets->NewHitbox(Assets, "BossRoom_BottomWall", BossRoomRect(0, 705, 1837, 43), true, 0);
+		Assets->NewHitbox(Assets, "BossRoom_BottomColumn2", BossRoomRect(925, 688, 80, 60), true, 0);
+		Assets->NewHitbox(Assets, "BossRoom_BottomColumn3", BossRoomRect(1355, 685, 80, 63), true, 0);
+		Assets->NewHitbox(Assets, "BossRoom_BottomColumn4", BossRoomRect(1775, 680, 62, 68), true, 0);
+		Assets->NewHitbox(Assets, "BossRoom_RightWall", BossRoomRect(1800, 0, 37, 748), true, 0);
 
 	} else if (scenarioIndex == 99) { // Kard Kassino Rooftop Hallway
 
@@ -305,18 +340,19 @@ Rectangle GetPlayerBody(Character* plr, Rectangle plrFrame) {
 }
 
 int GetMinionCount(int scenario) {
-	if (scenario == 0) { return 7; }
-	if (scenario == 1) { return 4; }
+	if (scenario == SCENARIO_GARDEN) { return 7; }
+	if (scenario == SCENARIO_ENTRANCE) { return 4; }
+	if (scenario == SCENARIO_BOSS_ROOM) { return 0; }
 	return 5;
 }
 
-int GetWinsToBoss(int scenario) {
-	return (scenario == 0 || scenario == 1) ? 3 : 0;
+int GetWinsToUnlockDoor(int scenario) {
+	return scenario == SCENARIO_ENTRANCE ? 3 : 0;
 }
 
-void StartEncounter(Battle* battle, Encounter* enc, const EnemyDef* def, Camera2D* camera, Character* plr, Rectangle plrFrame, Rectangle battlePlrSrc) {
+void StartEncounter(Battle* battle, Encounter* enc, const EnemyDef* def, Camera2D* camera, Character* plr, Rectangle plrFrame) {
 	Vector2 plrCenter = {plr->position.x + plrFrame.width / 2, plr->position.y + plrFrame.height / 2};
-	Battle_Start(battle, def, plr->texture, battlePlrSrc);
+	Battle_Start(battle, def, plr->texture, (Vector2){plrFrame.width, plrFrame.height});
 	Encounter_Start(enc, GetWorldToScreen2D(plrCenter, *camera), def->name);
 }
 
@@ -343,15 +379,19 @@ int main() {
 	int plrFrameSpeed = 3;
 	Rectangle plrFrame = plr->animFrame;
 
-	Texture2D scenarioBackgrounds[] = {LoadTexture("kardkassino_garden.png"), LoadTexture("kardkassino_entrance_scene.png")};
+	ScenarioBackground scenarioBackgrounds[] = {
+		{SCENARIO_GARDEN, LoadTexture("kardkassino_garden.png")},
+		{SCENARIO_ENTRANCE, LoadTexture("kardkassino_entrance_scene.png")},
+		{SCENARIO_BOSS_ROOM, LoadTexture("karddkassino_bossroom.png")},
+	};
 	int backgroundCount = sizeof(scenarioBackgrounds) / sizeof(scenarioBackgrounds[0]);
+	SceneOverlay entranceFountain = SceneOverlay_Load("kardkassino_entrance_fountain.png", (Vector2){579, 210}, 425);
 	Texture2D* background = NULL;
 	Camera2D camera = {0};
 	camera.zoom = 1.0f;
 
 	Battle battle = {0};
 	Encounter encounter = {0};
-	Rectangle battlePlrSrc = {plrFrame.width * 3, 0, plrFrame.width, plrFrame.height};
 
 	Score score;
 	Score_Init(&score, "highscore.txt");
@@ -360,6 +400,9 @@ int main() {
 	bool scoreSavedOnDeath = false;
 	Progression progress;
 	Progression_Reset(&progress, 0);
+	Door casinoDoor;
+	InitCasinoDoor(&casinoDoor);
+	bool viaDoor = false;
 
 	const EnemyDef* cutsceneBattle = NULL;
 	bool bossCutsceneSeen = false;
@@ -378,12 +421,12 @@ int main() {
 		Cutscene_Update(1.0f / 60.0f);
 		bool inCutscene = Cutscene_IsActive();
 		if (!inCutscene && cutsceneBattle != NULL) {
-			Battle_Start(&battle, cutsceneBattle, plr->texture, battlePlrSrc);
+			Battle_Start(&battle, cutsceneBattle, plr->texture, (Vector2){plrFrame.width, plrFrame.height});
 			cutsceneBattle = NULL;
 		}
 
 		bool inBattle = Battle_IsActive(&battle) && !inIntro;
-		StageContext stage = {&minions, &score, worldSize, GetPlayerBody(plr, plrFrame), Assets};
+		StageContext stage = {&minions, &score};
 
 		if (inBattle) {
 			Battle_Update(&battle, 1.0f / 60.0f, &plr->hp);
@@ -409,34 +452,38 @@ int main() {
 		BeginDrawing();
 		ClearBackground(DARKGREEN);
 
+		// reinicia a luta
+		if ((IsKeyPressed(KEY_R) && !inBattle && !inIntro && !inCutscene) || Battle_ConsumeRestart(&battle)) {
+			plr->hp = PLAYER_MAX_HP;
+			Score_Save(&score);
+			Score_Reset(&score);
+			scoreSavedOnDeath = false;
+			if (scenario == SCENARIO_BOSS_ROOM) { scenario = SCENARIO_ENTRANCE; }
+			lastScenario = -1;
+			viaDoor = false;
+			inBattle = false;
+			inIntro = false;
+		}
+
 		if (lastScenario != scenario) {
 			lastScenario = scenario;
 			DrawGameScenarios(scenario, Assets);
 
 			background = GetScenarioBackground(scenarioBackgrounds, backgroundCount, scenario);
-			plr->position = GetScenarioSpawn(scenario);
+			plr->position = viaDoor ? GetDoorArrival(scenario) : GetScenarioSpawn(scenario);
 			SetupWorld(&camera, plr, plrFrame, background);
 			Minions_Spawn(&minions, GetMinionCount(scenario), worldSize, GetPlayerBody(plr, plrFrame), Assets);
-			Progression_Reset(&progress, GetWinsToBoss(scenario));
+			if (!viaDoor) {
+				Progression_Reset(&progress, GetWinsToUnlockDoor(scenario));
+				InitCasinoDoor(&casinoDoor);
+			}
+			Progression_SetInBossRoom(&progress, scenario == SCENARIO_BOSS_ROOM);
+			if (scenario == SCENARIO_BOSS_ROOM && !progress.cleared) { Minions_SpawnBoss(&minions, GetBossRoomBossPosition()); }
 			Battle_Stop(&battle);
 			Encounter_Stop(&encounter);
 			Cutscene_Stop();
 			cutsceneBattle = NULL;
-		}
-
-		// reinicia a luta
-		if ((IsKeyPressed(KEY_R) && !inBattle && !inIntro && !inCutscene) || Battle_ConsumeRestart(&battle)) {
-			plr->hp = PLAYER_MAX_HP;
-			plr->position = GetScenarioSpawn(scenario);
-			Score_Save(&score);
-			Score_Reset(&score);
-			scoreSavedOnDeath = false;
-			Minions_Spawn(&minions, GetMinionCount(scenario), worldSize, GetPlayerBody(plr, plrFrame), Assets);
-			Progression_Reset(&progress, GetWinsToBoss(scenario));
-			Battle_Stop(&battle);
-			Encounter_Stop(&encounter);
-			inBattle = false;
-			inIntro = false;
+			viaDoor = false;
 		}
 
 
@@ -487,6 +534,7 @@ int main() {
 			if (!inIntro) {
 				MinionInput input = {plrBody, plrFacing, attackPressed, plr->hp > 0, plr->hp > 0 && Progression_CanEncounter(&progress)};
 				int touched = Minions_Update(&minions, 1.0f / 60.0f, input, &score, worldSize, Assets);
+				Rectangle feet = GetPlayerCollider(plr->position, plrFrame);
 				if (touched >= 0) {
 					const EnemyDef* def = Enemy_Get(Minions_EnemyOf(&minions, touched));
 					Progression_BeginFight(&progress, touched);
@@ -495,10 +543,16 @@ int main() {
 						cutsceneBattle = def;
 						Cutscene_StartBoss(plr->texture, plrFrame);
 					} else {
-						StartEncounter(&battle, &encounter, def, &camera, plr, plrFrame, battlePlrSrc);
+						StartEncounter(&battle, &encounter, def, &camera, plr, plrFrame);
 					}
+				} else if (scenario == SCENARIO_ENTRANCE) {
+					Door_Update(&casinoDoor, 1.0f / 60.0f, progress.doorUnlocked, feet);
+					if (Door_IsEntering(&casinoDoor, feet)) { scenario = SCENARIO_BOSS_ROOM; viaDoor = true; }
+				} else if (scenario == SCENARIO_BOSS_ROOM && CheckCollisionRecs(GetBossRoomExit(), feet)) {
+					scenario = SCENARIO_ENTRANCE;
+					viaDoor = true;
 				}
-				Progression_Update(&progress, 1.0f / 60.0f, stage);
+				Progression_Update(&progress, 1.0f / 60.0f);
 			}
 
 			if (plr->hp <= 0 && !scoreSavedOnDeath) {
@@ -510,8 +564,15 @@ int main() {
 
 			BeginMode2D(camera);
 			DrawWorld(background, Assets, GameData->debugMode);
+			if (scenario == SCENARIO_ENTRANCE) {
+				Door_Draw(&casinoDoor, TextFormat("Trancada! Venca mais %d inimigo(s)", Progression_WinsLeft(&progress)));
+			}
 			Minions_Draw(&minions);
 			DrawTextureRec(plr->texture, (Rectangle){plrFrame.width * plrCurrentFrame.x, plrFrame.height * plrCurrentFrame.y, plrFrame.width, plrFrame.height}, plr->position, WHITE);
+			if (scenario == SCENARIO_ENTRANCE) {
+				Rectangle feet = GetPlayerCollider(plr->position, plrFrame);
+				SceneOverlay_DrawIfInFront(&entranceFountain, feet.y + feet.height, GetScreenHeight() / ENTRANCE_ART_HEIGHT);
+			}
 			if (GameData->debugMode) { DrawRectangleLinesEx(plrBody, 2, YELLOW); }
 			Score_DrawPopups(&score);
 			EndMode2D();
@@ -544,7 +605,8 @@ int main() {
 	}
 
 	Score_Save(&score);
-	for (int i = 0; i < backgroundCount; i++) { UnloadTexture(scenarioBackgrounds[i]); }
+	for (int i = 0; i < backgroundCount; i++) { UnloadTexture(scenarioBackgrounds[i].texture); }
+	SceneOverlay_Unload(&entranceFountain);
 	Cutscene_Unload();
 	GameData->UnloadCharacter(GameData, plr);
 	CloseWindow();

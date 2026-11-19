@@ -134,10 +134,11 @@ typedef struct {
 	bool restartRequested;
 
 	Texture2D plrTexture;
-	Rectangle plrSrc;
+	Vector2 plrFrameSize;
+	float actionT;
 } Battle;
 
-void Battle_Start(Battle* b, const EnemyDef* def, Texture2D plrTexture, Rectangle plrSrc);
+void Battle_Start(Battle* b, const EnemyDef* def, Texture2D plrTexture, Vector2 plrFrameSize);
 void Battle_Stop(Battle* b);
 void Battle_Update(Battle* b, float dt, int* plrHp);
 void Battle_Draw(const Battle* b, int plrHp);
