@@ -3,8 +3,14 @@
 
 #include <raylib.h>
 
+typedef enum {
+	DOOR_PORTAL,
+	DOOR_GATE
+} DoorStyle;
+
 typedef struct {
-	Rectangle panels;
+	DoorStyle style;
+	Rectangle area;
 	Rectangle entry;
 	bool unlocked;
 	bool playerNear;
@@ -12,9 +18,9 @@ typedef struct {
 	float time;
 } Door;
 
-void Door_Init(Door* door, Rectangle panels, Rectangle entry);
+void Door_Init(Door* door, DoorStyle style, Rectangle area, Rectangle entry);
 void Door_Update(Door* door, float dt, bool unlocked, Rectangle plrFeet);
-bool Door_IsEntering(const Door* door, Rectangle plrFeet);
+bool Door_IsOpen(const Door* door);
 void Door_Draw(const Door* door, const char* lockedHint);
 
 #endif

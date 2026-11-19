@@ -10,23 +10,23 @@ static void ShowBanner(Progression* p, const char* msg) {
 	p->bannerT = BANNER_TIME;
 }
 
-void Progression_Reset(Progression* p, int winsToUnlock) {
+void Progression_Reset(Progression* p) {
 	memset(p, 0, sizeof(*p));
-	p->winsToUnlock = winsToUnlock;
-	p->fighting = -1;
+	p->fightingMinion = -1;
 }
 
 bool Progression_CanEncounter(const Progression* p) {
-	return p->fighting < 0 && p->grace <= 0;
+	return p->fightingDef == NULL && p->grace <= 0;
 }
 
 int Progression_WinsLeft(const Progression* p) {
-	int left = p->winsToUnlock - p->wins;
+	int left = WINS_TO_OPEN_CASINO - p->wins;
 	return left > 0 ? left : 0;
 }
 
-void Progression_BeginFight(Progression* p, int minionIndex) {
-	p->fighting = minionIndex;
+void Progression_BeginFight(Progression* p, int minionIndex, const EnemyDef* def) {
+	p->fightingMinion = minionIndex;
+	p->fightingDef = def;
 }
 
 static void OnVictory(Progression* p, const EnemyDef* def) {
@@ -36,32 +36,39 @@ static void OnVictory(Progression* p, const EnemyDef* def) {
 		return;
 	}
 
+	if (def->dropsKey && !p->hasKey) {
+		p->hasKey = true;
+		ShowBanner(p, "Voce pegou a CHAVE!");
+	}
+
 	p->wins++;
-	if (p->winsToUnlock > 0 && !p->doorUnlocked && p->wins >= p->winsToUnlock) {
-		p->doorUnlocked = true;
+	if (!p->casinoUnlocked && p->wins >= WINS_TO_OPEN_CASINO) {
+		p->casinoUnlocked = true;
 		ShowBanner(p, "A porta do KARD KASSINO destrancou!");
 	}
 }
 
 void Progression_EndFight(Progression* p, BattleOutcome outcome, StageContext ctx) {
-	int index = p->fighting;
-	p->fighting = -1;
+	int index = p->fightingMinion;
+	const EnemyDef* def = p->fightingDef;
+	p->fightingMinion = -1;
+	p->fightingDef = NULL;
 	p->grace = ENCOUNTER_GRACE;
 
-	if (index < 0 || outcome == BATTLE_ONGOING || outcome == BATTLE_LOST) { return; }
+	if (def == NULL || outcome == BATTLE_ONGOING || outcome == BATTLE_LOST) { return; }
 
-	const EnemyDef* def = Enemy_Get(Minions_EnemyOf(ctx.minions, index));
-	Vector2 pos = Minions_Position(ctx.minions, index);
-	Minions_Remove(ctx.minions, index);
+	bool keepMinion = outcome == BATTLE_FLED && Minions_IsPermanent(ctx.minions, index);
+	if (index >= 0 && !keepMinion) {
+		Vector2 pos = Minions_Position(ctx.minions, index);
+		Minions_Remove(ctx.minions, index);
+		if (outcome != BATTLE_FLED) { Score_AddKill(ctx.score, def->points, (Vector2){pos.x, pos.y - 40}); }
+	}
 
 	if (outcome == BATTLE_FLED) { return; }
-
-	Score_AddKill(ctx.score, def->points, (Vector2){pos.x, pos.y - 40});
 	OnVictory(p, def);
 }
 
 void Progression_SetInBossRoom(Progression* p, bool inBossRoom) {
-	if (inBossRoom && !p->inBossRoom && !p->cleared) { ShowBanner(p, "SALA DO CHEFE"); }
 	p->inBossRoom = inBossRoom;
 }
 
@@ -73,16 +80,15 @@ void Progression_Update(Progression* p, float dt) {
 static const char* ObjectiveText(const Progression* p, Color* color) {
 	*color = WHITE;
 	if (p->cleared) { *color = GOLD; return "Fase limpa!"; }
-	if (p->inBossRoom) { *color = (Color){255, 120, 120, 255}; return "CHEFE: derrote o DEMONINHO"; }
-	if (p->winsToUnlock <= 0) { return NULL; }
-	if (p->doorUnlocked) { *color = (Color){120, 255, 200, 255}; return "Entre no KARD KASSINO"; }
-	return TextFormat("Inimigos vencidos: %d/%d", p->wins, p->winsToUnlock);
+	if (p->inBossRoom) { *color = (Color){255, 120, 120, 255}; return "CHEFE: derrote o DRAGAO"; }
+	if (p->hasKey) { *color = (Color){120, 255, 200, 255}; return "Use a CHAVE na sala 2"; }
+	if (p->casinoUnlocked) { *color = (Color){120, 255, 200, 255}; return "Ache a CHAVE dentro do KARD KASSINO"; }
+	return TextFormat("Inimigos vencidos: %d/%d", p->wins, WINS_TO_OPEN_CASINO);
 }
 
 static void DrawObjective(const Progression* p) {
 	Color color;
 	const char* txt = ObjectiveText(p, &color);
-	if (txt == NULL) { return; }
 
 	int fs = 24;
 	int x = 15, y = GetScreenHeight() - 75;

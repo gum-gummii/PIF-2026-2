@@ -12,7 +12,7 @@ typedef enum {
 	MINION_SLIME,
 	MINION_BAT,
 	MINION_TANK,
-	MINION_BOSS,
+	MINION_DEMON,
 	MINION_KIND_COUNT
 } MinionKind;
 
@@ -57,7 +57,8 @@ typedef struct {
 
 void Minions_Spawn(MinionField* f, int count, Vector2 worldSize, Rectangle plrBody, LoadedAssetsClass* Assets);
 void Minions_Clear(MinionField* f);
-int  Minions_SpawnBoss(MinionField* f, Vector2 pos);
+int  Minions_SpawnDemon(MinionField* f, Vector2 pos);
+bool Minions_IsPermanent(const MinionField* f, int index);
 void Minions_Remove(MinionField* f, int index);
 
 int Minions_Update(MinionField* f, float dt, MinionInput in, Score* score, Vector2 worldSize, LoadedAssetsClass* Assets);

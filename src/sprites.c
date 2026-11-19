@@ -18,6 +18,72 @@ static const char* DEMON_SPRITE[DEMON_GRID] = {
 	"..FFF..FFF..",
 };
 
+#define DRAGON_COLS 14
+#define DRAGON_ROWS 12
+
+static const char* DRAGON_SPRITE[DRAGON_ROWS] = {
+	"W.H........H.W",
+	"WW.HBBBBBBH.WW",
+	"WWWBBBBBBBBWWW",
+	"WWBBBEBBEBBBWW",
+	"WWBBBBBBBBBBWW",
+	".WBBTTTTTTBBW.",
+	"..BBMMMMMMBB..",
+	"..BBBBBBBBBB..",
+	"...BLLLLLLB...",
+	"...BLLLLLLB...",
+	"..BBB....BBB..",
+	".CCC......CCC.",
+};
+
+DragonPalette Sprite_DragonPalette(void) {
+	return (DragonPalette){
+		.horn = {240, 220, 170, 255},
+		.body = {170, 40, 50, 255},
+		.wing = {100, 20, 35, 255},
+		.belly = {240, 160, 60, 255},
+		.eye = {255, 220, 60, 255},
+		.teeth = WHITE,
+		.mouth = {40, 5, 15, 255},
+		.claw = {50, 20, 30, 255},
+	};
+}
+
+DragonPalette Sprite_DragonFlat(Color color) {
+	return (DragonPalette){color, color, color, color, color, color, color, color};
+}
+
+static Color DragonColor(char ch, const DragonPalette* p) {
+	switch (ch) {
+		case 'H': return p->horn;
+		case 'B': return p->body;
+		case 'W': return p->wing;
+		case 'L': return p->belly;
+		case 'E': return p->eye;
+		case 'T': return p->teeth;
+		case 'M': return p->mouth;
+		case 'C': return p->claw;
+		default:  return BLANK;
+	}
+}
+
+void Sprite_DrawDragon(Vector2 center, float size, DragonPalette palette, float alpha) {
+	float px = size / DRAGON_COLS;
+	float height = px * DRAGON_ROWS;
+	float left = center.x - size / 2, top = center.y - height / 2;
+
+	DrawEllipse((int)center.x, (int)(center.y + height / 2), size / 2, size * 0.08f, Fade(BLACK, 0.35f * alpha));
+
+	for (int row = 0; row < DRAGON_ROWS; row++) {
+		for (int col = 0; col < DRAGON_COLS; col++) {
+			char ch = DRAGON_SPRITE[row][col];
+			if (ch == '.') { continue; }
+			Rectangle cell = {left + col * px, top + row * px, px + 0.5f, px + 0.5f};
+			DrawRectangleRec(cell, Fade(DragonColor(ch, &palette), alpha));
+		}
+	}
+}
+
 DemonPalette Sprite_DemonPalette(void) {
 	return (DemonPalette){
 		.horn = {240, 220, 140, 255},

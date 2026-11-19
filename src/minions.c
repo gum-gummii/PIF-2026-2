@@ -19,14 +19,14 @@ typedef struct {
 	int points;
 	Color color;
 	EnemyType enemy;
-	bool boss;
+	bool unique;
 } MinionStats;
 
 static const MinionStats STATS[MINION_KIND_COUNT] = {
 	[MINION_SLIME] = {34, 2,  70, 10, {90, 200, 90, 255},  ENEMY_GOSMA,     false},
 	[MINION_BAT]   = {26, 1, 140, 15, {150, 80, 200, 255}, ENEMY_MORCEGO,   false},
 	[MINION_TANK]  = {44, 4,  50, 30, {230, 130, 40, 255}, ENEMY_TANQUE,    false},
-	[MINION_BOSS]  = {60, 1,  95,  0, {130, 70, 190, 255}, ENEMY_DEMONINHO, true},
+	[MINION_DEMON] = {60, 1,  95,  0, {130, 70, 190, 255}, ENEMY_DEMONINHO, true},
 };
 
 static float Rand01(void) { return (float)GetRandomValue(0, 10000) / 10000.0f; }
@@ -69,7 +69,7 @@ static void SetupMinion(Minion* m, MinionKind kind, Vector2 pos) {
 	const MinionStats* st = &STATS[kind];
 	memset(m, 0, sizeof(*m));
 	m->alive = true;
-	m->permanent = st->boss;
+	m->permanent = st->unique;
 	m->kind = kind;
 	m->pos = pos;
 	m->size = st->size;
@@ -103,11 +103,11 @@ void Minions_Spawn(MinionField* f, int count, Vector2 worldSize, Rectangle plrBo
 	}
 }
 
-int Minions_SpawnBoss(MinionField* f, Vector2 pos) {
+int Minions_SpawnDemon(MinionField* f, Vector2 pos) {
 	if (f->count >= MAX_MINIONS) { return -1; }
 
 	int index = f->count++;
-	SetupMinion(&f->m[index], MINION_BOSS, pos);
+	SetupMinion(&f->m[index], MINION_DEMON, pos);
 	f->m[index].alertT = ALERT_TIME;
 	return index;
 }
@@ -119,6 +119,10 @@ void Minions_Remove(MinionField* f, int index) {
 	m->chasing = false;
 	m->deathT = 0.3f;
 	m->respawnT = RESPAWN_TIME + Rand01() * 2.0f;
+}
+
+bool Minions_IsPermanent(const MinionField* f, int index) {
+	return index >= 0 && index < f->count && f->m[index].permanent;
 }
 
 EnemyType Minions_EnemyOf(const MinionField* f, int index) {
@@ -184,7 +188,7 @@ static Vector2 ChooseDirection(Minion* m, float dt, Vector2 plrC, bool plrAlive)
 
 static void ApplySwingHit(MinionField* f, Minion* m, Vector2 plrC, Score* score) {
 	const MinionStats* st = &STATS[m->kind];
-	if (st->boss || f->attackT <= 0 || m->lastSwingHit == f->swingId) { return; }
+	if (st->unique || f->attackT <= 0 || m->lastSwingHit == f->swingId) { return; }
 	if (!CheckCollisionRecs(f->attackRect, MinionRect(m->pos, m->size))) { return; }
 
 	m->lastSwingHit = f->swingId;
@@ -253,7 +257,7 @@ static void DrawMinionBody(const Minion* m) {
 		case MINION_SLIME: Sprite_DrawSlime(m->pos, m->size, m->bob, c, 1.0f); break;
 		case MINION_BAT:   Sprite_DrawBat(m->pos, m->size, m->bob, c, 1.0f);   break;
 		case MINION_TANK:  Sprite_DrawTank(m->pos, m->size, m->bob, c, 1.0f);  break;
-		case MINION_BOSS: {
+		case MINION_DEMON: {
 			float pulse = 0.5f + 0.5f * sinf(m->bob * 0.8f);
 			DrawCircleV(m->pos, m->size * 0.85f, Fade(RED, 0.12f + 0.1f * pulse));
 			Vector2 c2 = {m->pos.x, m->pos.y + sinf(m->bob) * 2};

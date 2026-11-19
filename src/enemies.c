@@ -8,19 +8,20 @@ static const EnemyDef DEFS[ENEMY_TYPE_COUNT] = {
 		.type = ENEMY_DEMONINHO,
 		.name = "DEMONINHO",
 		.article = "o",
-		.maxHp = 200,
+		.maxHp = 150,
 		.size = 108,
 		.color = {130, 70, 190, 255},
 		.bulletSpeed = 1.0f,
 		.damageMult = 1.0f,
-		.turnTime = 6.3f,
-		.patterns = PATTERN_HEARTS | PATTERN_SPADES | PATTERN_CLUBS | PATTERN_DIAMONDS | PATTERN_PAW | PATTERN_WALL,
-		.isBoss = true,
-		.exp = 30,
-		.gold = 20,
-		.points = 200,
-		.checkText = "* DEMONINHO - ATQ 10 DEF 5\n* Parece bravo, mas gosta de atencao.",
-		.firstFlavor = "* O DEMONINHO te encara com raiva.",
+		.turnTime = 5.5f,
+		.patterns = PATTERN_RAIN | PATTERN_SIDES | PATTERN_FAN,
+		.isBoss = false,
+		.dropsKey = true,
+		.exp = 15,
+		.gold = 10,
+		.points = 120,
+		.checkText = "* DEMONINHO - ATQ 10 DEF 5\n* Guarda a CHAVE da sala do chefe.",
+		.firstFlavor = "* O DEMONINHO protege a CHAVE!",
 		.spareFlavor = "* O DEMONINHO parece pronto para ser poupado.",
 		.angryFlavor = "* O DEMONINHO esta furioso!",
 		.flavor = {"* Cheiro de enxofre no ar.", "* O DEMONINHO range os dentes.", "* Hora de decidir o que fazer."},
@@ -116,11 +117,53 @@ static const EnemyDef DEFS[ENEMY_TYPE_COUNT] = {
 			{"Polir", 40, "* Voce poliu o TANQUE.\n* Ele parece mais relaxado."},
 		},
 	},
+	[ENEMY_DRAGAO] = {
+		.type = ENEMY_DRAGAO,
+		.name = "DRAGAO",
+		.article = "o",
+		.maxHp = 300,
+		.size = 150,
+		.color = {170, 40, 50, 255},
+		.bulletSpeed = 1.0f,
+		.damageMult = 1.0f,
+		.turnTime = 6.3f,
+		.patterns = PATTERN_HEARTS | PATTERN_SPADES | PATTERN_CLUBS | PATTERN_DIAMONDS | PATTERN_PAW | PATTERN_WALL,
+		.isBoss = true,
+		.dropsKey = false,
+		.exp = 60,
+		.gold = 50,
+		.points = 400,
+		.checkText = "* DRAGAO - ATQ 20 DEF 12\n* O que sobrou da sua irma...",
+		.firstFlavor = "* O DRAGAO ruge e o cassino inteiro treme!",
+		.spareFlavor = "* O DRAGAO parece lembrar de quem voce e.",
+		.angryFlavor = "* O DRAGAO cospe fogo pra todo lado!",
+		.flavor = {"* Cheiro de fichas queimadas.", "* As cartas do baralho voam pela sala.", "* O DRAGAO bate as asas."},
+		.linesNormal = {"GRRRAAH!", "...!", "VOCE VAI PERDER TUDO!"},
+		.linesCalm = {"...mana?", "Eu... lembro...", "..."},
+		.linesAngry = {"RRROOOAAARR!", "QUEIMA!", "A CASA SEMPRE GANHA!"},
+		.acts = {
+			{"Chamar", 30, "* Voce chamou sua irma pelo nome.\n* O DRAGAO hesitou por um instante."},
+			{"Abracar", 40, "* Voce abracou o DRAGAO.\n* As escamas dele esquentaram."},
+		},
+	},
 };
 
 const EnemyDef* Enemy_Get(EnemyType type) {
 	if (type < 0 || type >= ENEMY_TYPE_COUNT) { return &DEFS[ENEMY_DEMONINHO]; }
 	return &DEFS[type];
+}
+
+static DragonPalette DragonLook(EnemyLook look) {
+	if (look.flash) { return Sprite_DragonFlat(WHITE); }
+
+	DragonPalette p = Sprite_DragonPalette();
+	if (look.calm) {
+		p.body = CALM_COLOR;
+		p.wing = (Color){170, 140, 40, 255};
+	} else if (look.angry && look.alert) {
+		p.eye = RED;
+	}
+	return p;
 }
 
 static DemonPalette DemonLook(EnemyLook look) {
@@ -146,6 +189,7 @@ void Enemy_Draw(const EnemyDef* def, Vector2 center, float size, float bob, Enem
 		case ENEMY_GOSMA:     Sprite_DrawSlime(center, size, bob, color, alpha); break;
 		case ENEMY_MORCEGO:   Sprite_DrawBat(center, size, bob, color, alpha); break;
 		case ENEMY_TANQUE:    Sprite_DrawTank(center, size, bob, color, alpha); break;
+		case ENEMY_DRAGAO:    Sprite_DrawDragon(center, size, DragonLook(look), alpha); break;
 		default: break;
 	}
 }

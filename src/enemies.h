@@ -10,6 +10,7 @@ typedef enum {
 	ENEMY_GOSMA,
 	ENEMY_MORCEGO,
 	ENEMY_TANQUE,
+	ENEMY_DRAGAO,
 	ENEMY_TYPE_COUNT
 } EnemyType;
 
@@ -46,6 +47,7 @@ typedef struct {
 	unsigned patterns;
 
 	bool isBoss;
+	bool dropsKey;
 	int exp;
 	int gold;
 	int points;
