@@ -39,7 +39,7 @@ static const BulletPattern ALL_PATTERNS[PATTERN_TYPES] = {
 #define SPADE_OPEN        0.15f
 #define SPADE_FIRE        0.5f
 #define SPADE_CLOSE       0.25f
-#define LASER_W           26.0f
+#define LASER_W           40.0f
 
 #define CLUB_APPEAR       0.4f  // atk3
 #define CLUB_GROW         0.3f
@@ -49,6 +49,7 @@ static const BulletPattern ALL_PATTERNS[PATTERN_TYPES] = {
 #define CLUB_FADE         0.4f
 #define ROD_LEN           62.0f
 #define ROD_W             9.0f
+#define CLUB_BULLET_SPEED 480.0f
 
 #define DIAMOND_FUSE      0.75f // atk4
 #define DIAMOND_SPEED     430.0f
@@ -440,6 +441,18 @@ static void ExplodeHeart(Battle* b, const Hazard* h, float spd) {
 	}
 }
 
+static void ClubBurst(Battle* b, const Hazard* h, float spd) {
+	Vector2 fwd = {cosf(h->dir), sinf(h->dir)};
+	Vector2 side = {-fwd.y, fwd.x};
+	for (int i = 0; i < 2; i++) {
+		float along = 12 + ROD_LEN * (i == 0 ? 0.7f : 2.0f);
+		Vector2 p = {h->pos.x + fwd.x * along, h->pos.y + fwd.y * along};
+		for (int s = -1; s <= 1; s += 2) {
+			AddBullet(b, p, (Vector2){side.x * s * CLUB_BULLET_SPEED * spd, side.y * s * CLUB_BULLET_SPEED * spd}, 12, ScaledDamage(b, 9));
+		}
+	}
+}
+
 static void ExplodeDiamond(Battle* b, const Hazard* h, float spd) {
 	Vector2 target = b->soul;
 	Vector2 offs[4] = {{0, -18}, {14, 0}, {0, 18}, {-14, 0}};
@@ -478,6 +491,7 @@ static void UpdateHazards(Battle* b, float dt, int* plrHp) {
 		}
 
 		case HZ_CLUB: {
+			if (h->t - dt < CLUB_HIT_T && h->t >= CLUB_HIT_T) { ClubBurst(b, h, spd); }
 			ClubRods r = ClubGeometry(h);
 			if (r.alpha > 0.35f) {
 				for (int k = 0; k < r.count; k++) {
