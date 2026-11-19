@@ -1,3 +1,6 @@
+SPRITES DA CUTSCENE DO CHEFE
+============================
+
 Coloque os PNGs nesta pasta (resources/cutscene/) com exatamente estes nomes.
 Enquanto um arquivo nao existir, o jogo desenha um boneco provisorio no lugar
 (com o nome do arquivo que falta escrito embaixo dele). Nao precisa mexer em codigo.

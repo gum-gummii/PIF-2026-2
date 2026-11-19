@@ -361,7 +361,6 @@ int main() {
 	Progression progress;
 	Progression_Reset(&progress, 0);
 
-	Cutscene cutscene = {0};
 	const EnemyDef* cutsceneBattle = NULL;
 	bool bossCutsceneSeen = false;
 
@@ -376,8 +375,8 @@ int main() {
 		Encounter_Update(&encounter, 1.0f / 60.0f);
 		bool inIntro = Encounter_IsActive(&encounter);
 
-		Cutscene_Update(&cutscene, 1.0f / 60.0f);
-		bool inCutscene = Cutscene_IsActive(&cutscene);
+		Cutscene_Update(1.0f / 60.0f);
+		bool inCutscene = Cutscene_IsActive();
 		if (!inCutscene && cutsceneBattle != NULL) {
 			Battle_Start(&battle, cutsceneBattle, plr->texture, battlePlrSrc);
 			cutsceneBattle = NULL;
@@ -421,7 +420,7 @@ int main() {
 			Progression_Reset(&progress, GetWinsToBoss(scenario));
 			Battle_Stop(&battle);
 			Encounter_Stop(&encounter);
-			Cutscene_Stop(&cutscene);
+			Cutscene_Stop();
 			cutsceneBattle = NULL;
 		}
 
@@ -443,7 +442,7 @@ int main() {
 
 
 		if (inCutscene) {
-			Cutscene_Draw(&cutscene);
+			Cutscene_Draw();
 		} else if (inBattle) {
 			Battle_Draw(&battle, plr->hp);
 		} else if (GameData->spiritMode) {
@@ -494,7 +493,7 @@ int main() {
 					if (def->isBoss && !bossCutsceneSeen) {
 						bossCutsceneSeen = true;
 						cutsceneBattle = def;
-						Cutscene_StartBoss(&cutscene, plr->texture, plrFrame);
+						Cutscene_StartBoss(plr->texture, plrFrame);
 					} else {
 						StartEncounter(&battle, &encounter, def, &camera, plr, plrFrame, battlePlrSrc);
 					}
@@ -546,7 +545,7 @@ int main() {
 
 	Score_Save(&score);
 	for (int i = 0; i < backgroundCount; i++) { UnloadTexture(scenarioBackgrounds[i]); }
-	Cutscene_Unload(&cutscene);
+	Cutscene_Unload();
 	GameData->UnloadCharacter(GameData, plr);
 	CloseWindow();
 
