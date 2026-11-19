@@ -10,6 +10,7 @@
 #include <encounter.h>
 #include <score.h>
 #include <minions.h>
+#include <progression.h>
 #include <time.h>
 
 
@@ -25,6 +26,8 @@ int playerSpiritSize = 40;
 float dmgDebounce = 0;
 float clockTimestampMs = 0;
 Vector2 worldSize = {0, 0};
+const float SCENE_ART_HEIGHT = 750.0f;
+const int START_SCENARIO = 1;
 
 int GetBattleSquareSize() { return GetScreenHeight() - 50; }
 int GetBattleBorderSize() { return (int)round(GetBattleSquareSize() / 50); }
@@ -208,6 +211,21 @@ void DrawWorld(Texture2D* background, LoadedAssetsClass* Assets, bool debugInfo)
 //}
 
 
+Rectangle SceneRect(float x, float y, float width, float height) {
+	float scale = GetScreenHeight() / SCENE_ART_HEIGHT;
+	return (Rectangle){x * scale, y * scale, width * scale, height * scale};
+}
+
+Texture2D* GetScenarioBackground(Texture2D* backgrounds, int count, int scenario) {
+	if (scenario < 0 || scenario >= count || backgrounds[scenario].id == 0) { return NULL; }
+	return &backgrounds[scenario];
+}
+
+Vector2 GetScenarioSpawn(int scenario) {
+	if (scenario == 1) { return (Vector2){30, 330}; }
+	return GetCenterOfScreen();
+}
+
 void DrawGameScenarios(int scenarioIndex, LoadedAssetsClass* Assets) {
 	Assets->FreeHitboxes(Assets);
 	Assets->FreeImages(Assets);
@@ -222,14 +240,17 @@ void DrawGameScenarios(int scenarioIndex, LoadedAssetsClass* Assets) {
 		Rectangle hb3 = {GetScreenWidth() - 200, 0, 200, 200};
 		Assets->NewHitbox(Assets, "KardKassinoGarden_HB3", hb3, false, -25);
 	} else if (scenarioIndex == 1) { // Kard Kassino Entrace
-		Rectangle hb1 = {0, 0, (GetScreenWidth() /1.5), (GetScreenHeight()/2) - 140};
-		Assets->NewHitbox(Assets, "arar", hb1, true, 0);
-
-		Rectangle hb2 = {0, (GetScreenHeight() - ((GetScreenHeight()/2) - 140)), (GetScreenWidth() /1.5), (GetScreenHeight()/2) - 140};
-		Assets->NewHitbox(Assets, "arare", hb2, true, 0);
-
-		Rectangle hb3 = {GetScreenWidth() / 2, (GetScreenHeight()/2) - 140, 35, 280};
-		Assets->NewHitbox(Assets, "healer", hb3, false, -30);
+		Assets->NewHitbox(Assets, "Entrance_Skyline", SceneRect(0, 0, 2834, 140), true, 0);
+		Assets->NewHitbox(Assets, "Entrance_Fountain", SceneRect(575, 370, 250, 100), true, 0);
+		Assets->NewHitbox(Assets, "Entrance_CarRed", SceneRect(20, 600, 176, 150), true, 0);
+		Assets->NewHitbox(Assets, "Entrance_CarBlue", SceneRect(226, 645, 173, 105), true, 0);
+		Assets->NewHitbox(Assets, "Entrance_CarYellow", SceneRect(506, 625, 168, 125), true, 0);
+		Assets->NewHitbox(Assets, "Entrance_CarGreen", SceneRect(1066, 625, 173, 125), true, 0);
+		Assets->NewHitbox(Assets, "Entrance_Planter1", SceneRect(1537, 545, 110, 65), true, 0);
+		Assets->NewHitbox(Assets, "Entrance_Planter2", SceneRect(1757, 545, 110, 65), true, 0);
+		Assets->NewHitbox(Assets, "Entrance_Planter3", SceneRect(1977, 545, 110, 65), true, 0);
+		Assets->NewHitbox(Assets, "Entrance_Planter4", SceneRect(2197, 545, 110, 65), true, 0);
+		Assets->NewHitbox(Assets, "Entrance_Kassino", SceneRect(2520, 0, 314, 750), true, 0);
 
 	} else if (scenarioIndex == 2) { // Kard Kassino Lobby
 
@@ -288,9 +309,14 @@ int GetMinionCount(int scenario) {
 	return 5;
 }
 
-void StartFightIntro(Encounter* enc, Camera2D* camera, Character* plr, Rectangle plrFrame) {
+int GetWinsToBoss(int scenario) {
+	return (scenario == 0 || scenario == 1) ? 3 : 0;
+}
+
+void StartEncounter(Battle* battle, Encounter* enc, const EnemyDef* def, Camera2D* camera, Character* plr, Rectangle plrFrame, Rectangle battlePlrSrc) {
 	Vector2 plrCenter = {plr->position.x + plrFrame.width / 2, plr->position.y + plrFrame.height / 2};
-	Encounter_Start(enc, GetWorldToScreen2D(plrCenter, *camera), "DEMONINHO");
+	Battle_Start(battle, def, plr->texture, battlePlrSrc);
+	Encounter_Start(enc, GetWorldToScreen2D(plrCenter, *camera), def->name);
 }
 
 int main() {
@@ -310,13 +336,14 @@ int main() {
 	bool isMoving = false;
 
 	int lastScenario = -1;
-	int scenario = 0;
+	int scenario = START_SCENARIO;
 	int plrFrameI = 0;
 	Vector2 plrCurrentFrame = {0, 0};
 	int plrFrameSpeed = 3;
 	Rectangle plrFrame = plr->animFrame;
 
-	Texture2D gardenBackground = LoadTexture("kardkassino_garden.png");
+	Texture2D scenarioBackgrounds[] = {LoadTexture("kardkassino_garden.png"), LoadTexture("kardkassino_entrance_scene.png")};
+	int backgroundCount = sizeof(scenarioBackgrounds) / sizeof(scenarioBackgrounds[0]);
 	Texture2D* background = NULL;
 	Camera2D camera = {0};
 	camera.zoom = 1.0f;
@@ -330,6 +357,8 @@ int main() {
 	MinionField minions = {0};
 	Vector2 plrFacing = {0, 1};
 	bool scoreSavedOnDeath = false;
+	Progression progress;
+	Progression_Reset(&progress, 0);
 
 	while (!WindowShouldClose()) {
 		WaitTime(1.0 / 60.0);
@@ -339,13 +368,21 @@ int main() {
 			GameData->debugMode = !GameData->debugMode;
 		}
 
-		if (IsKeyPressed(KEY_Q)) { scenario -= 1; }
-		if (IsKeyPressed(KEY_E)) { scenario += 1; printf("NEXT"); }
-
 		Encounter_Update(&encounter, 1.0f / 60.0f);
 		bool inIntro = Encounter_IsActive(&encounter);
 		bool inBattle = Battle_IsActive(&battle) && !inIntro;
-		if (inBattle) { Battle_Update(&battle, 1.0f / 60.0f, &plr->hp); }
+		StageContext stage = {&minions, &score, worldSize, GetPlayerBody(plr, plrFrame), Assets};
+
+		if (inBattle) {
+			Battle_Update(&battle, 1.0f / 60.0f, &plr->hp);
+			if (!Battle_IsActive(&battle)) { Progression_EndFight(&progress, Battle_Outcome(&battle), stage); }
+			inBattle = Battle_IsActive(&battle);
+		}
+
+		if (!inBattle && !inIntro) {
+			if (IsKeyPressed(KEY_Q)) { scenario -= 1; }
+			if (IsKeyPressed(KEY_E)) { scenario += 1; printf("NEXT"); }
+		}
 
 		if (IsKeyPressed(KEY_SPACE) && !inIntro && !inBattle) {
 			GameData->spiritMode = !GameData->spiritMode;
@@ -364,31 +401,28 @@ int main() {
 			lastScenario = scenario;
 			DrawGameScenarios(scenario, Assets);
 
-			background = (scenario == 0 && gardenBackground.id != 0) ? &gardenBackground : NULL;
+			background = GetScenarioBackground(scenarioBackgrounds, backgroundCount, scenario);
+			plr->position = GetScenarioSpawn(scenario);
 			SetupWorld(&camera, plr, plrFrame, background);
 			Minions_Spawn(&minions, GetMinionCount(scenario), worldSize, GetPlayerBody(plr, plrFrame), Assets);
-
-			// o demoninho mora nos cenarios 0 e 1
-			if (scenario == 0 || scenario == 1) {
-				Battle_Start(&battle, plr->texture, battlePlrSrc);
-				StartFightIntro(&encounter, &camera, plr, plrFrame);
-			} else {
-				Battle_Stop(&battle);
-			}
+			Progression_Reset(&progress, GetWinsToBoss(scenario));
+			Battle_Stop(&battle);
+			Encounter_Stop(&encounter);
 		}
 
 		// reinicia a luta
-		if (IsKeyPressed(KEY_R) || Battle_ConsumeRestart(&battle)) {
+		if ((IsKeyPressed(KEY_R) && !inBattle && !inIntro) || Battle_ConsumeRestart(&battle)) {
 			plr->hp = PLAYER_MAX_HP;
-			plr->position = GetCenterOfScreen();
+			plr->position = GetScenarioSpawn(scenario);
 			Score_Save(&score);
 			Score_Reset(&score);
 			scoreSavedOnDeath = false;
 			Minions_Spawn(&minions, GetMinionCount(scenario), worldSize, GetPlayerBody(plr, plrFrame), Assets);
-			if (scenario == 0 || scenario == 1) {
-				Battle_Start(&battle, plr->texture, battlePlrSrc);
-				StartFightIntro(&encounter, &camera, plr, plrFrame);
-			}
+			Progression_Reset(&progress, GetWinsToBoss(scenario));
+			Battle_Stop(&battle);
+			Encounter_Stop(&encounter);
+			inBattle = false;
+			inIntro = false;
 		}
 
 
@@ -435,7 +469,13 @@ int main() {
 			bool attackPressed = !inIntro && (IsKeyPressed(KEY_J) || IsKeyPressed(KEY_K) || IsMouseButtonPressed(MOUSE_BUTTON_LEFT));
 			Rectangle plrBody = GetPlayerBody(plr, plrFrame);
 			if (!inIntro) {
-				Minions_Update(&minions, 1.0f / 60.0f, plrBody, plrFacing, attackPressed, &plr->hp, &score, worldSize, Assets);
+				MinionInput input = {plrBody, plrFacing, attackPressed, plr->hp > 0, plr->hp > 0 && Progression_CanEncounter(&progress)};
+				int touched = Minions_Update(&minions, 1.0f / 60.0f, input, &score, worldSize, Assets);
+				if (touched >= 0) {
+					Progression_BeginFight(&progress, touched);
+					StartEncounter(&battle, &encounter, Enemy_Get(Minions_EnemyOf(&minions, touched)), &camera, plr, plrFrame, battlePlrSrc);
+				}
+				Progression_Update(&progress, 1.0f / 60.0f, stage);
 			}
 
 			if (plr->hp <= 0 && !scoreSavedOnDeath) {
@@ -448,14 +488,11 @@ int main() {
 			BeginMode2D(camera);
 			DrawWorld(background, Assets, GameData->debugMode);
 			Minions_Draw(&minions);
-			if (!Minions_PlayerBlink(&minions)) {
-				DrawTextureRec(plr->texture, (Rectangle){plrFrame.width * plrCurrentFrame.x, plrFrame.height * plrCurrentFrame.y, plrFrame.width, plrFrame.height}, plr->position, WHITE);
-			}
+			DrawTextureRec(plr->texture, (Rectangle){plrFrame.width * plrCurrentFrame.x, plrFrame.height * plrCurrentFrame.y, plrFrame.width, plrFrame.height}, plr->position, WHITE);
 			if (GameData->debugMode) { DrawRectangleLinesEx(plrBody, 2, YELLOW); }
 			Score_DrawPopups(&score);
 			EndMode2D();
 
-			Minions_DrawHurtOverlay(&minions);
 			if (plr->hp <= 0) {
 				const char* msg = "VOCE CAIU! [R] para recomecar";
 				DrawText(msg, GetScreenWidth() / 2 - MeasureText(msg, 40) / 2, GetScreenHeight() / 2 - 20, 40, RED);
@@ -463,7 +500,10 @@ int main() {
 		}
 
 		Score_Update(&score, 1.0f / 60.0f);
-		if (!inBattle && !inIntro) { Score_DrawHud(&score); }
+		if (!inBattle && !inIntro) {
+			Score_DrawHud(&score);
+			Progression_DrawHud(&progress);
+		}
 
 		if (inIntro) { Encounter_Draw(&encounter); }
 
@@ -481,7 +521,7 @@ int main() {
 	}
 
 	Score_Save(&score);
-	UnloadTexture(gardenBackground);
+	for (int i = 0; i < backgroundCount; i++) { UnloadTexture(scenarioBackgrounds[i]); }
 	GameData->UnloadCharacter(GameData, plr);
 	CloseWindow();
 

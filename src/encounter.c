@@ -71,6 +71,7 @@ void Encounter_Update(Encounter* enc, float dt) {
 	if (IsKeyPressed(KEY_ENTER) || enc->t >= TotalTime(enc)) { enc->active = false; }
 }
 
+void Encounter_Stop(Encounter* enc) { enc->active = false; }
 bool Encounter_IsActive(const Encounter* enc) { return enc->active; }
 
 void Encounter_Draw(const Encounter* enc) {
