@@ -10,3 +10,6 @@ execute build-VisualStudio2022.bat (ou build-VisualStudio2026.bat), abra a solu�
 
 ja no Linux/macOs é so entrar em build/, rode ./premake5 gmake (ou ./premake5.osx gmake no macOS), volte para a raiz e rode make.
 Requisitos: compilador C99 (GCC/MinGW ou MSVC). O raylib é baixado automaticamente pelo premake.
+
+# Vídeo Demo
+https://www.youtube.com/watch?v=jNghe6vgW20
