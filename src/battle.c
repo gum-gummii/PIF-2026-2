@@ -262,9 +262,9 @@ void Battle_Start(Battle* b, const EnemyDef* def, Texture2D plrTexture, Vector2 
 	b->plrTexture = plrTexture;
 	b->plrFrameSize = plrFrameSize;
 	b->enemy.hp = b->enemy.maxHp = def->maxHp;
-	b->items[0] = (BattleItem){"Bolo", 40, 2};
-	b->items[1] = (BattleItem){"Suco", 20, 3};
-	b->items[2] = (BattleItem){"Biscoito", 10, 4};
+	b->items[0] = (BattleItem){"Bolo", 100, 2};
+	b->items[1] = (BattleItem){"Suco", 25, 4};
+	b->items[2] = (BattleItem){"Biscoito", 15, 5};
 	b->box = IdleBox();
 	b->menuLock = MENU_LOCK_START;
 	b->state = B_FADE_IN;

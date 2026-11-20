@@ -265,18 +265,37 @@ void StartEncounter(Battle* battle, Encounter* enc, const EnemyDef* def, Camera2
 	Encounter_Start(enc, GetWorldToScreen2D(plrCenter, *camera), def->name);
 }
 
+char* LoadMusic(char* fileName, int* changed, Music* music, char* oldMusicName, float volume) {
+	printf("Loading music: %s\n", fileName);
+	printf("Old music: %s\n", oldMusicName);
+	if (strcmp(oldMusicName, fileName) == 0) { return oldMusicName; }
+
+	if (music->ctxData != NULL) { UnloadMusicStream(*music); }
+
+	*music = LoadMusicStream(TextFormat("%s.mp3",fileName));
+	SetMusicVolume(*music, volume);
+	PlayMusicStream(*music);
+	*changed = 1;
+	return fileName;
+}
+
 int main() {
 	SetConfigFlags(FLAG_VSYNC_HINT | FLAG_WINDOW_HIGHDPI);
-	InitWindow(1280, 720, "ALTERNUDE");
+	InitWindow(1280, 720, "Chaos Constructs");
 	SearchAndSetResourceDir("resources");
+	InitAudioDevice();
 
 	GameDataClass* GameData = InitGameData();
 	int plrFrameAmount = 4;
 	int plrAnimsAmount = 10;
-	GameData->mainCharacter = GameData->NewCharacter(GameData, GetCenterOfScreen(), 17.5, PLAYER_MAX_HP, LoadTexture("playr.png"), (Vector2){plrFrameAmount, plrAnimsAmount});
+	GameData->mainCharacter = GameData->NewCharacter(GameData, GetCenterOfScreen(), 11.5, PLAYER_MAX_HP, LoadTexture("playr.png"), (Vector2){plrFrameAmount, plrAnimsAmount});
 	Character* plr = GameData->mainCharacter;
 	if (plr == NULL) { return 1; }
 	Spirit* plrSpirit = GameData->spirit;
+
+	int musicChanged = 0;
+	char* musicName = "none";
+	Music currentMusic = LoadMusicStream("cricket.mp3");
 
 	LoadedAssetsClass* Assets = InitLoadedAssets();
 	bool isMoving = false;
@@ -309,12 +328,25 @@ int main() {
 	const EnemyDef* bossDef = Enemy_Get(ENEMY_DRAGAO);
 
 	const EnemyDef* cutsceneBattle = NULL;
+	bool isBossCutscene = false;
 	bool bossCutsceneSeen = false;
 	bool introPending = true;
 
 	while (!WindowShouldClose()) {
 		WaitTime(1.0 / 60.0);
 		clockTimestampMs += (1.0 / 60.0);
+
+		if (currentMusic.ctxData != NULL) {
+			UpdateMusicStream(currentMusic);
+			float timePlayed = GetMusicTimePlayed(currentMusic)/GetMusicTimeLength(currentMusic);
+			if (timePlayed > 1.0f) { timePlayed = 1.0f; }
+			if (timePlayed >= 0.999f && strcmp(musicName, "boss") == 0) {
+				SeekMusicStream(currentMusic, 11.49f);
+			} else if (timePlayed >= 1.0f) {
+				StopMusicStream(currentMusic);
+				PlayMusicStream(currentMusic);
+			}
+		}
 
 		if (IsKeyPressed(KEY_P)) {
 			GameData->debugMode = !GameData->debugMode;
@@ -326,6 +358,11 @@ int main() {
 		Cutscene_Update(1.0f / 60.0f);
 		bool inCutscene = Cutscene_IsActive();
 		if (!inCutscene && cutsceneBattle != NULL) {
+			if (isBossCutscene) {
+				isBossCutscene = false;
+				musicName = LoadMusic("boss", &musicChanged, &currentMusic, musicName, 0.4f);
+			}
+
 			Battle_Start(&battle, cutsceneBattle, plr->texture, (Vector2){plrFrame.width, plrFrame.height});
 			cutsceneBattle = NULL;
 		}
@@ -340,12 +377,12 @@ int main() {
 		}
 
 		if (!inBattle && !inIntro && !inCutscene) {
-			if (IsKeyPressed(KEY_Q) && scene > 0) { scene--; }
-			if (IsKeyPressed(KEY_E) && scene < SCENE_COUNT - 1) { scene++; }
+			//if (IsKeyPressed(KEY_Q) && scene > 0) { scene--; }
+			//if (IsKeyPressed(KEY_E) && scene < SCENE_COUNT - 1) { scene++; }
 		}
 
 		if (IsKeyPressed(KEY_SPACE) && !inIntro && !inBattle && !inCutscene) {
-			GameData->spiritMode = !GameData->spiritMode;
+			//GameData->spiritMode = !GameData->spiritMode;
 
 			if (GameData->spiritMode) {
 				Vector2 center = GetCenterOfScreen();
@@ -386,13 +423,25 @@ int main() {
 			cutsceneBattle = NULL;
 			viaExit = false;
 
+			if (strcmp(sceneDef->name, "Parking") == 0 || strcmp(sceneDef->name, "Entrance") == 0) {
+				musicName = LoadMusic("cricket", &musicChanged, &currentMusic, musicName, 1.3f);
+			} else if (strcmp(sceneDef->name, "BossRoom") == 0) {
+				StopMusicStream(currentMusic);
+			} else {
+				musicName = LoadMusic("demolish", &musicChanged, &currentMusic, musicName, 1.0f);
+			}
+
+			printf("Scene: %s\n", sceneDef->name);
+
 			if (sceneDef->isBossRoom && !progress.cleared) {
 				Progression_BeginFight(&progress, -1, bossDef);
 				if (!bossCutsceneSeen) {
 					bossCutsceneSeen = true;
+					isBossCutscene = true;
 					cutsceneBattle = bossDef;
 					Cutscene_StartBoss(plr->texture, plrFrame);
 				} else {
+					musicName = LoadMusic("boss", &musicChanged, &currentMusic, musicName, 0.4f);
 					StartEncounter(&battle, &encounter, bossDef, &camera, plr, plrFrame);
 				}
 			}
@@ -400,6 +449,10 @@ int main() {
 
 		if (introPending) {
 			introPending = false;
+
+			musicName = LoadMusic("cricket", &musicChanged, &currentMusic, musicName, 1.3f);
+			PlayMusicStream(currentMusic);
+
 			Cutscene_StartIntro(plr->texture, plrFrame);
 			inCutscene = true;
 		}
@@ -447,7 +500,7 @@ int main() {
 			}
 
 			// [J], [K] ou clique esquerdo = bater
-			bool attackPressed = !inIntro && (IsKeyPressed(KEY_J) || IsKeyPressed(KEY_K) || IsMouseButtonPressed(MOUSE_BUTTON_LEFT));
+			bool attackPressed = false; //!inIntro && (IsKeyPressed(KEY_J) || IsKeyPressed(KEY_K) || IsMouseButtonPressed(MOUSE_BUTTON_LEFT));
 			Rectangle plrBody = GetPlayerBody(plr, plrFrame);
 			if (!inIntro) {
 				MinionInput input = {plrBody, plrFacing, attackPressed, plr->hp > 0, plr->hp > 0 && Progression_CanEncounter(&progress)};
@@ -515,6 +568,11 @@ int main() {
 		EndDrawing();
 	}
 
+	if (musicName != NULL) {
+		StopMusicStream(currentMusic);
+		UnloadMusicStream(currentMusic);
+	}
+	CloseAudioDevice();
 	Score_Save(&score);
 	Scenes_UnloadAssets();
 	Cutscene_Unload();
